@@ -8,8 +8,8 @@ import {
   integer,
   timestamp,
 } from "drizzle-orm/pg-core";
-import { shopStatusEnum } from "./enums";
-import { users } from "./users";
+import { shopStatusEnum } from "./enums.js";
+import { users } from "./users.js";
 
 export const shops = pgTable("shops", {
   id: uuid("id").defaultRandom().primaryKey(),

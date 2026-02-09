@@ -1,6 +1,6 @@
 import { pgTable, uuid, varchar, timestamp } from "drizzle-orm/pg-core";
-import { orderStatusEnum } from "./enums";
-import { orders } from "./orders";
+import { orderStatusEnum } from "./enums.js";
+import { orders } from "./orders.js";
 
 // ── Append-only order status transition log ────────────
 export const orderEvents = pgTable("order_events", {

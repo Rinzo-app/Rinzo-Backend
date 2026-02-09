@@ -1,6 +1,6 @@
 import { pgTable, uuid, varchar, integer, boolean } from "drizzle-orm/pg-core";
-import { pricingTypeEnum } from "./enums";
-import { shops } from "./shops";
+import { pricingTypeEnum } from "./enums.js";
+import { shops } from "./shops.js";
 
 export const services = pgTable("services", {
   id: uuid("id").defaultRandom().primaryKey(),

@@ -15,17 +15,17 @@ export {
   refundReasonEnum,
   disputeRaisedByEnum,
   disputeStatusEnum,
-} from "./enums";
+} from "./enums.js";
 
 // ── Tables ─────────────────────────────────────────────
-export { users } from "./users";
-export { shops } from "./shops";
-export { services } from "./services";
-export { riders } from "./riders";
-export { orders, orderItems } from "./orders";
-export { orderEvents } from "./order-events";
-export { adminEvents } from "./admin-events";
-export { disputes } from "./disputes";
-export { payments } from "./payments";
-export { ledgerEntries } from "./ledger-entries";
-export { refunds } from "./refunds";
+export { users } from "./users.js";
+export { shops } from "./shops.js";
+export { services } from "./services.js";
+export { riders } from "./riders.js";
+export { orders, orderItems } from "./orders.js";
+export { orderEvents } from "./order-events.js";
+export { adminEvents } from "./admin-events.js";
+export { disputes } from "./disputes.js";
+export { payments } from "./payments.js";
+export { ledgerEntries } from "./ledger-entries.js";
+export { refunds } from "./refunds.js";

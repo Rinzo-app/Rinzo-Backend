@@ -1,9 +1,9 @@
 import { pgTable, uuid, jsonb, integer, text, doublePrecision, timestamp } from "drizzle-orm/pg-core";
-import { orderStatusEnum, rejectionReasonEnum } from "./enums";
-import { users } from "./users";
-import { shops } from "./shops";
-import { riders } from "./riders";
-import { services } from "./services";
+import { orderStatusEnum, rejectionReasonEnum } from "./enums.js";
+import { users } from "./users.js";
+import { shops } from "./shops.js";
+import { riders } from "./riders.js";
+import { services } from "./services.js";
 
 export const orders = pgTable("orders", {
   id: uuid("id").defaultRandom().primaryKey(),

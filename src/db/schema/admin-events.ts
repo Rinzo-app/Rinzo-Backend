@@ -1,5 +1,5 @@
 import { pgTable, uuid, varchar, text, timestamp, jsonb } from "drizzle-orm/pg-core";
-import { users } from "./users";
+import { users } from "./users.js";
 
 /**
  * Audit log for admin-initiated actions.

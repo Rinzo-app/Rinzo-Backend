@@ -1,6 +1,6 @@
 import { pgTable, uuid, integer, jsonb, timestamp } from "drizzle-orm/pg-core";
-import { ledgerEntityTypeEnum, ledgerReasonEnum } from "./enums";
-import { orders } from "./orders";
+import { ledgerEntityTypeEnum, ledgerReasonEnum } from "./enums.js";
+import { orders } from "./orders.js";
 
 // ── Append-only ledger for platform economics ──────────
 export const ledgerEntries = pgTable("ledger_entries", {

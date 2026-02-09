@@ -1,6 +1,6 @@
 import { pgTable, uuid, integer, varchar, timestamp } from "drizzle-orm/pg-core";
-import { paymentMethodEnum, paymentStatusEnum } from "./enums";
-import { orders } from "./orders";
+import { paymentMethodEnum, paymentStatusEnum } from "./enums.js";
+import { orders } from "./orders.js";
 
 // ── One payment per order ──────────────────────────────
 export const payments = pgTable("payments", {

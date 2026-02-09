@@ -1,5 +1,5 @@
 import { pgTable, uuid, varchar, text, timestamp } from "drizzle-orm/pg-core";
-import { disputeRaisedByEnum, disputeStatusEnum } from "./enums";
+import { disputeRaisedByEnum, disputeStatusEnum } from "./enums.js";
 
 export const disputes = pgTable("disputes", {
   id: uuid("id").defaultRandom().primaryKey(),

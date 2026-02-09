@@ -1,7 +1,7 @@
 import { pgTable, uuid, integer, text, timestamp } from "drizzle-orm/pg-core";
-import { refundStatusEnum, refundReasonEnum } from "./enums";
-import { orders } from "./orders";
-import { payments } from "./payments";
+import { refundStatusEnum, refundReasonEnum } from "./enums.js";
+import { orders } from "./orders.js";
+import { payments } from "./payments.js";
 
 // ── One refund per payment (at most) ───────────────────
 export const refunds = pgTable("refunds", {
