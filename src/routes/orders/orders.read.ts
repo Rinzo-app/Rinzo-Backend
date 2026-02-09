@@ -29,7 +29,7 @@ export async function getOrderById(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const orderId = req.params.id;
+    const orderId = req.params.id as string;
     const { id: userId, role } = req.user;
 
     // ── 1. Fetch order ────────────────────────────────────
@@ -110,7 +110,7 @@ export async function getOrderEvents(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const orderId = req.params.id;
+    const orderId = req.params.id as string;
     const { id: userId, role } = req.user;
 
     // ── 1. Fetch order (for ownership check) ──────────────

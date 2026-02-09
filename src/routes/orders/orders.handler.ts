@@ -225,7 +225,7 @@ export async function cancelOrder(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const orderId = req.params.id;
+    const orderId = req.params.id as string;
     const customerId = req.user.id;
 
     // ── 1. Fetch order ────────────────────────────────────
@@ -255,7 +255,7 @@ export async function cancelOrder(
     );
 
     // ── 4. Update order in transaction ────────────────────
-    const [updated] = await db.transaction(async (tx) => {
+    const updated = await db.transaction(async (tx) => {
       const [row] = await tx
         .update(orders)
         .set({
@@ -293,7 +293,7 @@ export async function acceptOrder(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const orderId = req.params.id;
+    const orderId = req.params.id as string;
     const ownerId = req.user.id;
 
     // ── 1. Fetch order ────────────────────────────────────
@@ -331,7 +331,7 @@ export async function acceptOrder(
     );
 
     // ── 4. Update order in transaction ────────────────────
-    const [updated] = await db.transaction(async (tx) => {
+    const updated = await db.transaction(async (tx) => {
       const [row] = await tx
         .update(orders)
         .set({
@@ -372,7 +372,7 @@ export async function rejectOrder(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const orderId = req.params.id;
+    const orderId = req.params.id as string;
     const ownerId = req.user.id;
 
     // ── 1. Validate body ──────────────────────────────────
@@ -413,7 +413,7 @@ export async function rejectOrder(
     );
 
     // ── 5. Update order in transaction ────────────────────
-    const [updated] = await db.transaction(async (tx) => {
+    const updated = await db.transaction(async (tx) => {
       const [row] = await tx
         .update(orders)
         .set({
@@ -452,7 +452,7 @@ export async function markReady(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const orderId = req.params.id;
+    const orderId = req.params.id as string;
     const ownerId = req.user.id;
 
     // ── 1. Fetch order ────────────────────────────────────
@@ -490,7 +490,7 @@ export async function markReady(
     );
 
     // ── 4. Update order in transaction ────────────────────
-    const [updated] = await db.transaction(async (tx) => {
+    const updated = await db.transaction(async (tx) => {
       const [row] = await tx
         .update(orders)
         .set({

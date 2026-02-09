@@ -148,11 +148,11 @@ export async function pickupOrder(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const orderId = req.params.id;
+    const orderId = req.params.id as string;
     const rider = await getRiderForUser(req.user.id);
     const order = await getOrderForRider(orderId, rider.id);
 
-    // ── Validate transition ───────────────────────────────
+    // ── Validate transition ─────────────────────────────
     assertTransition(
       order.status as OrderStatus,
       "PICKED_UP_FROM_CUSTOMER",
@@ -160,7 +160,7 @@ export async function pickupOrder(
     );
 
     // ── Update in transaction ─────────────────────────────
-    const [updated] = await db.transaction(async (tx) => {
+    const updated = await db.transaction(async (tx) => {
       const [row] = await tx
         .update(orders)
         .set({
@@ -211,11 +211,11 @@ export async function dropoffOrder(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const orderId = req.params.id;
+    const orderId = req.params.id as string;
     const rider = await getRiderForUser(req.user.id);
     const order = await getOrderForRider(orderId, rider.id);
 
-    // ── Validate transition ───────────────────────────────
+    // ── Validate transition ─────────────────────────────
     assertTransition(
       order.status as OrderStatus,
       "AT_SHOP",
@@ -223,7 +223,7 @@ export async function dropoffOrder(
     );
 
     // ── Update in transaction ─────────────────────────────
-    const [updated] = await db.transaction(async (tx) => {
+    const updated = await db.transaction(async (tx) => {
       const [row] = await tx
         .update(orders)
         .set({
@@ -261,11 +261,11 @@ export async function deliverOrder(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const orderId = req.params.id;
+    const orderId = req.params.id as string;
     const rider = await getRiderForUser(req.user.id);
     const order = await getOrderForRider(orderId, rider.id);
 
-    // ── Validate transition ───────────────────────────────
+    // ── Validate transition ─────────────────────────────
     assertTransition(
       order.status as OrderStatus,
       "DELIVERED",
@@ -273,7 +273,7 @@ export async function deliverOrder(
     );
 
     // ── Update in transaction ─────────────────────────────
-    const [updated] = await db.transaction(async (tx) => {
+    const updated = await db.transaction(async (tx) => {
       const [row] = await tx
         .update(orders)
         .set({

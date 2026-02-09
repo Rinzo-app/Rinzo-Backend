@@ -24,7 +24,7 @@ export async function assignPickup(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const orderId = req.params.id;
+    const orderId = req.params.id as string;
 
     // ── 1. Validate body ──────────────────────────────────
     const { riderId } = assignPickupSchema.parse(req.body);
@@ -59,7 +59,7 @@ export async function assignPickup(
     );
 
     // ── 5. Update order in transaction ────────────────────
-    const [updated] = await db.transaction(async (tx) => {
+    const updated = await db.transaction(async (tx) => {
       const [row] = await tx
         .update(orders)
         .set({
@@ -106,7 +106,7 @@ export async function assignDelivery(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const orderId = req.params.id;
+    const orderId = req.params.id as string;
 
     // ── 1. Fetch order ────────────────────────────────────
     const [order] = await db
@@ -135,7 +135,7 @@ export async function assignDelivery(
     );
 
     // ── 4. Update order in transaction ────────────────────
-    const [updated] = await db.transaction(async (tx) => {
+    const updated = await db.transaction(async (tx) => {
       const [row] = await tx
         .update(orders)
         .set({
