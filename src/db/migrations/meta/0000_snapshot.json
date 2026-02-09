@@ -1,0 +1,252 @@
+{
+  "id": "00000000-0000-0000-0000-000000000000",
+  "prevId": "",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.users": {
+      "name": "users",
+      "schema": "",
+      "columns": {
+        "id": { "name": "id", "type": "uuid", "primaryKey": true, "notNull": true, "default": "gen_random_uuid()" },
+        "role": { "name": "role", "type": "user_role", "primaryKey": false, "notNull": true },
+        "name": { "name": "name", "type": "varchar(150)", "primaryKey": false, "notNull": true },
+        "phone": { "name": "phone", "type": "varchar(20)", "primaryKey": false, "notNull": false },
+        "email": { "name": "email", "type": "varchar(255)", "primaryKey": false, "notNull": false },
+        "status": { "name": "status", "type": "user_status", "primaryKey": false, "notNull": true, "default": "'PENDING'" },
+        "created_at": { "name": "created_at", "type": "timestamp", "primaryKey": false, "notNull": true, "default": "now()" }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.shops": {
+      "name": "shops",
+      "schema": "",
+      "columns": {
+        "id": { "name": "id", "type": "uuid", "primaryKey": true, "notNull": true, "default": "gen_random_uuid()" },
+        "owner_id": { "name": "owner_id", "type": "uuid", "primaryKey": false, "notNull": true },
+        "name": { "name": "name", "type": "varchar(200)", "primaryKey": false, "notNull": true },
+        "phone": { "name": "phone", "type": "varchar(20)", "primaryKey": false, "notNull": true },
+        "address": { "name": "address", "type": "text", "primaryKey": false, "notNull": true },
+        "latitude": { "name": "latitude", "type": "double precision", "primaryKey": false, "notNull": true },
+        "longitude": { "name": "longitude", "type": "double precision", "primaryKey": false, "notNull": true },
+        "status": { "name": "status", "type": "shop_status", "primaryKey": false, "notNull": true, "default": "'PENDING'" },
+        "is_open": { "name": "is_open", "type": "boolean", "primaryKey": false, "notNull": true, "default": true },
+        "daily_capacity": { "name": "daily_capacity", "type": "integer", "primaryKey": false, "notNull": true, "default": 20 },
+        "auto_reject_enabled": { "name": "auto_reject_enabled", "type": "boolean", "primaryKey": false, "notNull": true, "default": false },
+        "created_at": { "name": "created_at", "type": "timestamp", "primaryKey": false, "notNull": true, "default": "now()" }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "shops_owner_id_users_id_fk": {
+          "name": "shops_owner_id_users_id_fk",
+          "tableFrom": "shops",
+          "tableTo": "users",
+          "columnsFrom": ["owner_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.services": {
+      "name": "services",
+      "schema": "",
+      "columns": {
+        "id": { "name": "id", "type": "uuid", "primaryKey": true, "notNull": true, "default": "gen_random_uuid()" },
+        "shop_id": { "name": "shop_id", "type": "uuid", "primaryKey": false, "notNull": true },
+        "name": { "name": "name", "type": "varchar(200)", "primaryKey": false, "notNull": true },
+        "price": { "name": "price", "type": "integer", "primaryKey": false, "notNull": true },
+        "pricing_type": { "name": "pricing_type", "type": "pricing_type", "primaryKey": false, "notNull": true },
+        "is_active": { "name": "is_active", "type": "boolean", "primaryKey": false, "notNull": true, "default": true }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "services_shop_id_shops_id_fk": {
+          "name": "services_shop_id_shops_id_fk",
+          "tableFrom": "services",
+          "tableTo": "shops",
+          "columnsFrom": ["shop_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.riders": {
+      "name": "riders",
+      "schema": "",
+      "columns": {
+        "id": { "name": "id", "type": "uuid", "primaryKey": true, "notNull": true, "default": "gen_random_uuid()" },
+        "user_id": { "name": "user_id", "type": "uuid", "primaryKey": false, "notNull": true },
+        "phone": { "name": "phone", "type": "varchar(20)", "primaryKey": false, "notNull": true },
+        "vehicle_type": { "name": "vehicle_type", "type": "varchar(50)", "primaryKey": false, "notNull": true },
+        "status": { "name": "status", "type": "rider_status", "primaryKey": false, "notNull": true, "default": "'PENDING'" },
+        "is_available": { "name": "is_available", "type": "boolean", "primaryKey": false, "notNull": true, "default": false }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "riders_user_id_users_id_fk": {
+          "name": "riders_user_id_users_id_fk",
+          "tableFrom": "riders",
+          "tableTo": "users",
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.orders": {
+      "name": "orders",
+      "schema": "",
+      "columns": {
+        "id": { "name": "id", "type": "uuid", "primaryKey": true, "notNull": true, "default": "gen_random_uuid()" },
+        "customer_id": { "name": "customer_id", "type": "uuid", "primaryKey": false, "notNull": true },
+        "shop_id": { "name": "shop_id", "type": "uuid", "primaryKey": false, "notNull": true },
+        "rider_id": { "name": "rider_id", "type": "uuid", "primaryKey": false, "notNull": false },
+        "items": { "name": "items", "type": "jsonb", "primaryKey": false, "notNull": true },
+        "total_amount": { "name": "total_amount", "type": "integer", "primaryKey": false, "notNull": true },
+        "status": { "name": "status", "type": "order_status", "primaryKey": false, "notNull": true, "default": "'PLACED'" },
+        "pickup_address": { "name": "pickup_address", "type": "text", "primaryKey": false, "notNull": true },
+        "delivery_address": { "name": "delivery_address", "type": "text", "primaryKey": false, "notNull": true },
+        "created_at": { "name": "created_at", "type": "timestamp", "primaryKey": false, "notNull": true, "default": "now()" }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "orders_customer_id_users_id_fk": {
+          "name": "orders_customer_id_users_id_fk",
+          "tableFrom": "orders",
+          "tableTo": "users",
+          "columnsFrom": ["customer_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "orders_shop_id_shops_id_fk": {
+          "name": "orders_shop_id_shops_id_fk",
+          "tableFrom": "orders",
+          "tableTo": "shops",
+          "columnsFrom": ["shop_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "orders_rider_id_riders_id_fk": {
+          "name": "orders_rider_id_riders_id_fk",
+          "tableFrom": "orders",
+          "tableTo": "riders",
+          "columnsFrom": ["rider_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.order_items": {
+      "name": "order_items",
+      "schema": "",
+      "columns": {
+        "id": { "name": "id", "type": "uuid", "primaryKey": true, "notNull": true, "default": "gen_random_uuid()" },
+        "order_id": { "name": "order_id", "type": "uuid", "primaryKey": false, "notNull": true },
+        "service_id": { "name": "service_id", "type": "uuid", "primaryKey": false, "notNull": true },
+        "service_name": { "name": "service_name", "type": "text", "primaryKey": false, "notNull": true },
+        "price": { "name": "price", "type": "integer", "primaryKey": false, "notNull": true },
+        "quantity": { "name": "quantity", "type": "integer", "primaryKey": false, "notNull": true }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "order_items_order_id_orders_id_fk": {
+          "name": "order_items_order_id_orders_id_fk",
+          "tableFrom": "order_items",
+          "tableTo": "orders",
+          "columnsFrom": ["order_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "order_items_service_id_services_id_fk": {
+          "name": "order_items_service_id_services_id_fk",
+          "tableFrom": "order_items",
+          "tableTo": "services",
+          "columnsFrom": ["service_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.disputes": {
+      "name": "disputes",
+      "schema": "",
+      "columns": {
+        "id": { "name": "id", "type": "uuid", "primaryKey": true, "notNull": true, "default": "gen_random_uuid()" },
+        "raised_by_type": { "name": "raised_by_type", "type": "dispute_raised_by", "primaryKey": false, "notNull": true },
+        "raised_by_id": { "name": "raised_by_id", "type": "uuid", "primaryKey": false, "notNull": true },
+        "order_id": { "name": "order_id", "type": "uuid", "primaryKey": false, "notNull": false },
+        "category": { "name": "category", "type": "varchar(100)", "primaryKey": false, "notNull": true },
+        "description": { "name": "description", "type": "text", "primaryKey": false, "notNull": true },
+        "status": { "name": "status", "type": "dispute_status", "primaryKey": false, "notNull": true, "default": "'OPEN'" },
+        "admin_notes": { "name": "admin_notes", "type": "text", "primaryKey": false, "notNull": false },
+        "created_at": { "name": "created_at", "type": "timestamp", "primaryKey": false, "notNull": true, "default": "now()" }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {
+    "public.user_role": { "name": "user_role", "schema": "public", "values": ["CUSTOMER", "SHOP_OWNER", "RIDER", "ADMIN"] },
+    "public.user_status": { "name": "user_status", "schema": "public", "values": ["PENDING", "ACTIVE", "SUSPENDED"] },
+    "public.shop_status": { "name": "shop_status", "schema": "public", "values": ["PENDING", "APPROVED", "REJECTED", "SUSPENDED"] },
+    "public.pricing_type": { "name": "pricing_type", "schema": "public", "values": ["PER_KG", "PER_ITEM"] },
+    "public.rider_status": { "name": "rider_status", "schema": "public", "values": ["PENDING", "APPROVED", "ACTIVE", "SUSPENDED"] },
+    "public.order_status": { "name": "order_status", "schema": "public", "values": ["PLACED", "SHOP_ACCEPTED", "PICKUP_ASSIGNED", "PICKED_UP_FROM_CUSTOMER", "AT_SHOP", "READY", "OUT_FOR_DELIVERY", "DELIVERED", "CANCELLED", "REJECTED_BY_SHOP"] },
+    "public.dispute_raised_by": { "name": "dispute_raised_by", "schema": "public", "values": ["CUSTOMER", "SHOP", "RIDER"] },
+    "public.dispute_status": { "name": "dispute_status", "schema": "public", "values": ["OPEN", "IN_REVIEW", "RESOLVED", "CLOSED"] }
+  },
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "schemas": {},
+    "tables": {},
+    "columns": {}
+  }
+}
