@@ -1,4 +1,4 @@
-import { pgTable, uuid, jsonb, integer, text, doublePrecision, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, uuid, jsonb, integer, text, varchar, doublePrecision, timestamp } from "drizzle-orm/pg-core";
 import { orderStatusEnum, rejectionReasonEnum } from "./enums.js";
 import { users } from "./users.js";
 import { shops } from "./shops.js";
@@ -25,6 +25,9 @@ export const orders = pgTable("orders", {
   pickupLat: doublePrecision("pickup_lat"),
   pickupLng: doublePrecision("pickup_lng"),
   rejectionReason: rejectionReasonEnum("rejection_reason"),
+  // Scheduling fields (nullable — customer may not have selected)
+  pickupDate: varchar("pickup_date", { length: 20 }),
+  pickupSlot: varchar("pickup_slot", { length: 50 }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

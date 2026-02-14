@@ -3,9 +3,9 @@ import { eq } from "drizzle-orm";
 import jwt from "jsonwebtoken";
 import { db } from "../db/client.js";
 import { users } from "../db/schema/users.js";
-import { UnauthorizedError } from "../lib/errors.js";
+import { ForbiddenError, UnauthorizedError } from "../lib/errors.js";
 import { firebaseAuth } from "../lib/firebase-admin.js";
-import type { AuthenticatedRequest, AuthUser, UserRole } from "../lib/types.js";
+import type { AuthUser } from "../lib/types.js";
 
 // ─────────────────────────────────────────────────────────
 // AUTH MIDDLEWARE
@@ -65,8 +65,8 @@ export async function requireAuth(
     if (IS_DEV && devUserId) {
       const user = await loadUserById(devUserId);
       if (!user) throw new UnauthorizedError("Dev user not found");
-      (req as AuthenticatedRequest).user = user;
-      return next();
+      req.user = user;
+      return checkSuspended(req, next);
     }
 
     // ── Extract Bearer token ─────────────────────────────
@@ -87,8 +87,8 @@ export async function requireAuth(
         if (userId) {
           const user = await loadUserById(userId);
           if (user && user.role === "ADMIN") {
-            (req as AuthenticatedRequest).user = user;
-            return next();
+            req.user = user;
+            return next(); // Admins are never suspended-checked
           }
         }
       } catch {
@@ -113,9 +113,25 @@ export async function requireAuth(
       );
     }
 
-    (req as AuthenticatedRequest).user = user;
-    return next();
+    req.user = user;
+    return checkSuspended(req, next);
   } catch (err) {
     next(err);
   }
+}
+
+/**
+ * Block suspended users from all routes except /api/auth/me
+ * (which clients need to detect their suspension status).
+ */
+function checkSuspended(req: Request, next: NextFunction): void {
+  if (req.user?.status === "SUSPENDED" && req.originalUrl !== "/api/auth/me") {
+    return next(
+      new ForbiddenError(
+        "Your account has been suspended",
+        "ERR_SUSPENDED",
+      ),
+    );
+  }
+  return next();
 }

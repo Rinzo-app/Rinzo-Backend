@@ -1,10 +1,12 @@
 import type { Response, NextFunction } from "express";
-import { eq, and } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../../db/client.js";
 import { disputes } from "../../db/schema/disputes.js";
 import { orders } from "../../db/schema/orders.js";
+import { riders } from "../../db/schema/riders.js";
 import { shops } from "../../db/schema/shops.js";
+import { DISPUTE_CATEGORIES } from "../../lib/constants.js";
 import {
   BadRequestError,
   ConflictError,
@@ -16,7 +18,7 @@ import type { AuthenticatedRequest } from "../../lib/types.js";
 // ── Validation schema ────────────────────────────────────
 const createDisputeSchema = z.object({
   orderId: z.string().uuid("Invalid order ID"),
-  category: z.string().min(1).max(100),
+  category: z.enum(DISPUTE_CATEGORIES, { message: "Invalid dispute category" }),
   description: z.string().min(1).max(2000),
 });
 
@@ -97,7 +99,15 @@ export async function createDispute(
         throw new ForbiddenError("This order does not belong to your shop");
       }
     } else if (user.role === "RIDER") {
-      if (order.riderId !== user.id) {
+      // order.riderId is a riders-table PK, not a users-table PK,
+      // so we must resolve the rider record first.
+      const [rider] = await db
+        .select({ id: riders.id })
+        .from(riders)
+        .where(eq(riders.userId, user.id))
+        .limit(1);
+
+      if (!rider || order.riderId !== rider.id) {
         throw new ForbiddenError("This order is not assigned to you");
       }
     }
@@ -138,4 +148,52 @@ export async function createDispute(
   } catch (err) {
     next(err);
   }
+}
+
+// ─────────────────────────────────────────────────────────
+// GET /api/disputes
+//
+// Non-admin: returns all disputes raised by the current user.
+// Disputes are stored with `raisedById = users.id`, so this
+// works for CUSTOMER, SHOP_OWNER, and RIDER alike.
+// ─────────────────────────────────────────────────────────
+
+export async function listMyDisputes(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const rows = await db
+      .select({
+        id: disputes.id,
+        orderId: disputes.orderId,
+        category: disputes.category,
+        description: disputes.description,
+        status: disputes.status,
+        createdAt: disputes.createdAt,
+        updatedAt: disputes.updatedAt,
+        resolution: disputes.resolution,
+      })
+      .from(disputes)
+      .where(eq(disputes.raisedById, req.user.id))
+      .orderBy(desc(disputes.createdAt));
+
+    res.status(200).json(rows);
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─────────────────────────────────────────────────────────
+// GET /api/disputes/categories
+// Returns the canonical list of dispute categories.
+// ─────────────────────────────────────────────────────────
+import type { Request } from "express";
+
+export function getDisputeCategories(
+  _req: Request,
+  res: Response,
+): void {
+  res.json(DISPUTE_CATEGORIES);
 }

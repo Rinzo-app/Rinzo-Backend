@@ -1,59 +1,77 @@
 import { Router } from "express";
 import { requireAuth } from "../../middleware/require-auth.js";
 import { requireRole } from "../../middleware/require-role.js";
-import { toggleAvailability, updateLocation, pickupOrder, dropoffOrder, deliverOrder } from "./rider.handler.js";
+import { requireApprovedRider } from "../../middleware/require-approved-rider.js";
+import { authed } from "../../lib/typed-handler.js";
+import { getRiderProfile, toggleAvailability, updateLocation, pickupOrder, dropoffOrder, deliverOrder } from "./rider.handler.js";
 import { getRiderEarnings } from "./rider-earnings.handler.js";
 import { listRiderOrders } from "../orders/orders.read.js";
 
 const riderRouter = Router();
 
+// ── Profile & earnings — accessible by PENDING riders so
+//    the status-blocked screen can still poll.
+riderRouter.get(
+  "/profile",
+  requireAuth,
+  requireRole("RIDER"),
+  authed(getRiderProfile),
+);
+
 riderRouter.get(
   "/earnings",
   requireAuth,
   requireRole("RIDER"),
-  getRiderEarnings as any,
+  authed(getRiderEarnings),
 );
 
+// ── Action endpoints — require APPROVED rider status ─────
 riderRouter.post(
   "/availability",
   requireAuth,
   requireRole("RIDER"),
-  toggleAvailability as any,
+  requireApprovedRider(),
+  authed(toggleAvailability),
 );
 
 riderRouter.post(
   "/location",
   requireAuth,
   requireRole("RIDER"),
-  updateLocation as any,
+  requireApprovedRider(),
+  authed(updateLocation),
 );
 
 riderRouter.get(
   "/orders",
   requireAuth,
   requireRole("RIDER"),
-  listRiderOrders as any,
+  requireApprovedRider(),
+  authed(listRiderOrders),
 );
 
 riderRouter.post(
   "/orders/:id/pickup",
   requireAuth,
   requireRole("RIDER"),
-  pickupOrder as any,
+  requireApprovedRider(),
+  authed(pickupOrder),
 );
 
 riderRouter.post(
   "/orders/:id/dropoff",
   requireAuth,
   requireRole("RIDER"),
-  dropoffOrder as any,
+  requireApprovedRider(),
+  authed(dropoffOrder),
 );
 
 riderRouter.post(
   "/orders/:id/deliver",
   requireAuth,
   requireRole("RIDER"),
-  deliverOrder as any,
+  requireApprovedRider(),
+  authed(deliverOrder),
 );
 
 export { riderRouter };

@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { requireAuth } from "../../middleware/require-auth.js";
 import { requireRole } from "../../middleware/require-role.js";
+import { authed } from "../../lib/typed-handler.js";
 import { assignPickup, assignDelivery } from "./admin.handler.js";
 import {
   listUsers,
@@ -17,21 +18,21 @@ adminRouter.get(
   "/orders",
   requireAuth,
   requireRole("ADMIN"),
-  listAllOrders as any,
+  authed(listAllOrders),
 );
 
 adminRouter.post(
   "/orders/:id/assign-pickup",
   requireAuth,
   requireRole("ADMIN"),
-  assignPickup as any,
+  authed(assignPickup),
 );
 
 adminRouter.post(
   "/orders/:id/assign-delivery",
   requireAuth,
   requireRole("ADMIN"),
-  assignDelivery as any,
+  authed(assignDelivery),
 );
 
 // ── User management ──────────────────────────────────────
@@ -39,28 +40,28 @@ adminRouter.get(
   "/users",
   requireAuth,
   requireRole("ADMIN"),
-  listUsers as any,
+  authed(listUsers),
 );
 
 adminRouter.post(
   "/users/:id/approve",
   requireAuth,
   requireRole("ADMIN"),
-  approveUser as any,
+  authed(approveUser),
 );
 
 adminRouter.post(
   "/users/:id/reject",
   requireAuth,
   requireRole("ADMIN"),
-  rejectUser as any,
+  authed(rejectUser),
 );
 
 adminRouter.post(
   "/users/:id/suspend",
   requireAuth,
   requireRole("ADMIN"),
-  suspendUser as any,
+  authed(suspendUser),
 );
 
 // ── Payment management ───────────────────────────────────
@@ -70,7 +71,7 @@ adminRouter.post(
   "/payments/:id/mark-collected",
   requireAuth,
   requireRole("ADMIN"),
-  markPaymentCollected as any,
+  authed(markPaymentCollected),
 );
 
 // ── Earnings reporting ───────────────────────────────────
@@ -80,7 +81,7 @@ adminRouter.get(
   "/earnings",
   requireAuth,
   requireRole("ADMIN"),
-  getAdminEarnings as any,
+  authed(getAdminEarnings),
 );
 
 // ── Refunds ──────────────────────────────────────────────
@@ -90,7 +91,7 @@ adminRouter.post(
   "/orders/:id/refund",
   requireAuth,
   requireRole("ADMIN"),
-  refundOrder as any,
+  authed(refundOrder),
 );
 
 // ── Rider earnings ───────────────────────────────────────
@@ -100,7 +101,7 @@ adminRouter.get(
   "/rider-earnings",
   requireAuth,
   requireRole("ADMIN"),
-  getAdminRiderEarnings as any,
+  authed(getAdminRiderEarnings),
 );
 
 // ── Rider payouts & balance ──────────────────────────────
@@ -110,14 +111,14 @@ adminRouter.post(
   "/riders/:id/payout",
   requireAuth,
   requireRole("ADMIN"),
-  markRiderPayout as any,
+  authed(markRiderPayout),
 );
 
 adminRouter.get(
   "/riders/:id/balance",
   requireAuth,
   requireRole("ADMIN"),
-  getRiderBalance as any,
+  authed(getRiderBalance),
 );
 
 // ── Disputes ─────────────────────────────────────────────
@@ -130,14 +131,14 @@ adminRouter.get(
   "/disputes",
   requireAuth,
   requireRole("ADMIN"),
-  listDisputes as any,
+  authed(listDisputes),
 );
 
 adminRouter.patch(
   "/disputes/:id",
   requireAuth,
   requireRole("ADMIN"),
-  updateDispute as any,
+  authed(updateDispute),
 );
 
 export { adminRouter };

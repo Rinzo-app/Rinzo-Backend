@@ -25,5 +25,14 @@ export const shops = pgTable("shops", {
   isOpen: boolean("is_open").notNull().default(true),
   dailyCapacity: integer("daily_capacity").notNull().default(20),
   autoRejectEnabled: boolean("auto_reject_enabled").notNull().default(false),
+
+  // ── Display fields for Customer app ─────────────────────
+  rating: doublePrecision("rating").notNull().default(0),
+  totalRatings: integer("total_ratings").notNull().default(0),
+  openTime: varchar("open_time", { length: 10 }).notNull().default("08:00"),
+  closeTime: varchar("close_time", { length: 10 }).notNull().default("20:00"),
+  deliveryFee: integer("delivery_fee").notNull().default(0),
+  minOrder: integer("min_order").notNull().default(0),
+
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

@@ -1,10 +1,11 @@
 import type { Response, NextFunction } from "express";
-import { eq, and } from "drizzle-orm";
+import { eq, and, count } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../../db/client.js";
 import { orders } from "../../db/schema/orders.js";
 import { orderEvents } from "../../db/schema/order-events.js";
 import { riders } from "../../db/schema/riders.js";
+import { users } from "../../db/schema/users.js";
 import { shops } from "../../db/schema/shops.js";
 import { ledgerEntries } from "../../db/schema/ledger-entries.js";
 import type { AuthenticatedRequest } from "../../lib/types.js";
@@ -12,7 +13,9 @@ import {
   NotFoundError,
   ForbiddenError,
   BadRequestError,
+  ConflictError,
 } from "../../lib/errors.js";
+import { parseUUID } from "../../lib/validate-uuid.js";
 import type { OrderStatus } from "../../lib/order-machine.js";
 import { assertTransition } from "../../lib/order-machine.js";
 import { resolveRiderLegDistanceKm } from "../../lib/rider-distance.js";
@@ -22,6 +25,81 @@ import { DELIVERY_RATE_PER_KM } from "../../config/delivery.js";
 const availabilitySchema = z.object({
   isAvailable: z.boolean(),
 });
+
+// ─────────────────────────────────────────────────────────
+// GET /api/rider/profile
+// Returns the authenticated rider's profile (joined user + rider data).
+// ─────────────────────────────────────────────────────────
+
+export async function getRiderProfile(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const [rider] = await db
+      .select({
+        riderId: riders.id,
+        vehicleType: riders.vehicleType,
+        vehicleNumber: riders.vehicleNumber,
+        riderStatus: riders.status,
+        isAvailable: riders.isAvailable,
+      })
+      .from(riders)
+      .where(eq(riders.userId, req.user.id))
+      .limit(1);
+
+    if (!rider) {
+      throw new NotFoundError(
+        "Rider profile not found for this user",
+        "ERR_RIDER_NOT_FOUND",
+      );
+    }
+
+    const [user] = await db
+      .select({
+        id: users.id,
+        name: users.name,
+        email: users.email,
+        phone: users.phone,
+        userStatus: users.status,
+        createdAt: users.createdAt,
+      })
+      .from(users)
+      .where(eq(users.id, req.user.id))
+      .limit(1);
+
+    // Rider status takes priority; fall back to user status
+    const effectiveStatus = rider.riderStatus ?? user?.userStatus ?? "PENDING";
+
+    // Count completed deliveries for this rider
+    const [{ total }] = await db
+      .select({ total: count() })
+      .from(orders)
+      .where(
+        and(
+          eq(orders.riderId, rider.riderId),
+          eq(orders.status, "DELIVERED"),
+        ),
+      );
+
+    res.status(200).json({
+      id: user?.id ?? req.user.id,
+      riderId: rider.riderId,
+      name: user?.name ?? "",
+      email: user?.email ?? "",
+      phone: user?.phone ?? null,
+      status: effectiveStatus,
+      vehicleType: rider.vehicleType,
+      vehicleNumber: rider.vehicleNumber ?? "",
+      availability: rider.isAvailable ? "AVAILABLE" : "OFFLINE",
+      joinedDate: user?.createdAt?.toISOString() ?? new Date().toISOString(),
+      totalDeliveries: total,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
 
 const locationSchema = z.object({
   lat: z.number().min(-90).max(90),
@@ -148,7 +226,7 @@ export async function pickupOrder(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const orderId = req.params.id as string;
+    const orderId = parseUUID(req.params.id as string, "order ID");
     const rider = await getRiderForUser(req.user.id);
     const order = await getOrderForRider(orderId, rider.id);
 
@@ -167,8 +245,15 @@ export async function pickupOrder(
           status: "PICKED_UP_FROM_CUSTOMER",
           updatedAt: new Date(),
         })
-        .where(eq(orders.id, orderId))
+        .where(and(eq(orders.id, orderId), eq(orders.status, order.status as OrderStatus)))
         .returning();
+
+      if (!row) {
+        throw new ConflictError(
+          "Order status changed concurrently — please retry",
+          "ERR_ORDER_RACE",
+        );
+      }
 
       await tx.insert(orderEvents).values({
         orderId,
@@ -211,7 +296,7 @@ export async function dropoffOrder(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const orderId = req.params.id as string;
+    const orderId = parseUUID(req.params.id as string, "order ID");
     const rider = await getRiderForUser(req.user.id);
     const order = await getOrderForRider(orderId, rider.id);
 
@@ -230,8 +315,15 @@ export async function dropoffOrder(
           status: "AT_SHOP",
           updatedAt: new Date(),
         })
-        .where(eq(orders.id, orderId))
+        .where(and(eq(orders.id, orderId), eq(orders.status, order.status as OrderStatus)))
         .returning();
+
+      if (!row) {
+        throw new ConflictError(
+          "Order status changed concurrently — please retry",
+          "ERR_ORDER_RACE",
+        );
+      }
 
       await tx.insert(orderEvents).values({
         orderId,
@@ -261,7 +353,7 @@ export async function deliverOrder(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const orderId = req.params.id as string;
+    const orderId = parseUUID(req.params.id as string, "order ID");
     const rider = await getRiderForUser(req.user.id);
     const order = await getOrderForRider(orderId, rider.id);
 
@@ -280,8 +372,15 @@ export async function deliverOrder(
           status: "DELIVERED",
           updatedAt: new Date(),
         })
-        .where(eq(orders.id, orderId))
+        .where(and(eq(orders.id, orderId), eq(orders.status, order.status as OrderStatus)))
         .returning();
+
+      if (!row) {
+        throw new ConflictError(
+          "Order status changed concurrently — please retry",
+          "ERR_ORDER_RACE",
+        );
+      }
 
       await tx.insert(orderEvents).values({
         orderId,

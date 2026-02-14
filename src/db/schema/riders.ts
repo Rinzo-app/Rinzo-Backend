@@ -9,6 +9,7 @@ export const riders = pgTable("riders", {
     .references(() => users.id),
   phone: varchar("phone", { length: 20 }).notNull(),
   vehicleType: varchar("vehicle_type", { length: 50 }).notNull(),
+  vehicleNumber: varchar("vehicle_number", { length: 30 }).notNull().default(""),
   status: riderStatusEnum("status").notNull().default("PENDING"),
   isAvailable: boolean("is_available").notNull().default(false),
 

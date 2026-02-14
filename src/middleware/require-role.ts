@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
 import { ForbiddenError, UnauthorizedError } from "../lib/errors.js";
-import type { AuthenticatedRequest, UserRole } from "../lib/types.js";
+import type { UserRole } from "../lib/types.js";
 
 // ─────────────────────────────────────────────────────────
 // ROLE GUARD
@@ -16,7 +16,7 @@ import type { AuthenticatedRequest, UserRole } from "../lib/types.js";
 
 export function requireRole(...allowed: UserRole[]) {
   return (req: Request, _res: Response, next: NextFunction): void => {
-    const user = (req as AuthenticatedRequest).user;
+    const user = req.user;
 
     if (!user) {
       return next(new UnauthorizedError("Authentication required"));

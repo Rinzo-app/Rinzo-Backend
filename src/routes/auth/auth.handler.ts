@@ -1,4 +1,4 @@
-import type { Request, Response, NextFunction } from "express";
+import type { Response, NextFunction } from "express";
 import { eq } from "drizzle-orm";
 import { db } from "../../db/client.js";
 import { users } from "../../db/schema/users.js";
@@ -14,6 +14,8 @@ import {
   registerShopSchema,
   registerRiderSchema,
 } from "./auth.schema.js";
+import type { Request } from "express";
+import type { AuthenticatedRequest } from "../../lib/types.js";
 
 // ─────────────────────────────────────────────────────────
 // Helper: extract & verify Firebase ID token from
@@ -180,6 +182,7 @@ export async function registerRider(
           userId: user.id,
           phone: body.data.phone,
           vehicleType: body.data.vehicleType,
+          vehicleNumber: body.data.vehicleNumber ?? "",
         })
         .returning({ riderId: riders.id, vehicleType: riders.vehicleType });
 
@@ -190,4 +193,32 @@ export async function registerRider(
   } catch (err) {
     next(err);
   }
+}
+
+// ─────────────────────────────────────────────────────────
+// GET /api/auth/me
+// Returns the authenticated user's basic profile.
+// Requires requireAuth middleware (no role guard).
+// ─────────────────────────────────────────────────────────
+export async function getMe(
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> {
+  const [user] = await db
+    .select({
+      id: users.id,
+      email: users.email,
+      role: users.role,
+      status: users.status,
+    })
+    .from(users)
+    .where(eq(users.id, req.user.id))
+    .limit(1);
+
+  if (!user) {
+    res.status(404).json({ message: "User not found" });
+    return;
+  }
+
+  res.json(user);
 }

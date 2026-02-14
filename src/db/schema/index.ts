@@ -26,6 +26,8 @@ export { orders, orderItems } from "./orders.js";
 export { orderEvents } from "./order-events.js";
 export { adminEvents } from "./admin-events.js";
 export { disputes } from "./disputes.js";
+export { addresses } from "./addresses.js";
+export { favorites } from "./favorites.js";
 export { payments } from "./payments.js";
 export { ledgerEntries } from "./ledger-entries.js";
 export { refunds } from "./refunds.js";

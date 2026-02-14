@@ -1,6 +1,7 @@
 import type { Response, NextFunction } from "express";
-import { eq, and, SQL } from "drizzle-orm";
+import { eq, and, sql, SQL } from "drizzle-orm";
 import { db } from "../../db/client.js";
+import { paginationSchema, paginate, paginatedResponse } from "../../lib/pagination.js";
 import { users } from "../../db/schema/users.js";
 import { riders } from "../../db/schema/riders.js";
 import { shops } from "../../db/schema/shops.js";
@@ -11,6 +12,7 @@ import {
   ConflictError,
   NotFoundError,
 } from "../../lib/errors.js";
+import { parseUUID } from "../../lib/validate-uuid.js";
 
 // ── Valid user‑level status transitions ──────────────────
 const ALLOWED_TRANSITIONS: Record<string, string[]> = {
@@ -21,13 +23,17 @@ const ALLOWED_TRANSITIONS: Record<string, string[]> = {
 
 // ── Derived status for related tables ────────────────────
 // Maps user-status actions to rider/shop status values.
-function riderStatusFor(userStatus: string): string {
+
+type RiderStatus = "PENDING" | "APPROVED" | "ACTIVE" | "SUSPENDED";
+type ShopStatus = "PENDING" | "APPROVED" | "REJECTED" | "SUSPENDED";
+
+function riderStatusFor(userStatus: string): RiderStatus {
   if (userStatus === "ACTIVE") return "APPROVED";
   if (userStatus === "SUSPENDED") return "SUSPENDED";
   return "PENDING";
 }
 
-function shopStatusFor(userStatus: string): string {
+function shopStatusFor(userStatus: string): ShopStatus {
   if (userStatus === "ACTIVE") return "APPROVED";
   if (userStatus === "SUSPENDED") return "SUSPENDED";
   return "PENDING";
@@ -42,6 +48,8 @@ export async function listUsers(
   next: NextFunction,
 ): Promise<void> {
   try {
+    const { page, limit } = paginationSchema.parse(req.query);
+    const { offset } = paginate(page, limit);
     const conditions: SQL[] = [];
 
     const statusParam = req.query.status as string | undefined;
@@ -62,12 +70,27 @@ export async function listUsers(
       conditions.push(eq(users.role, roleParam as "CUSTOMER" | "SHOP_OWNER" | "RIDER" | "ADMIN"));
     }
 
-    const rows =
-      conditions.length > 0
-        ? await db.select().from(users).where(and(...conditions))
-        : await db.select().from(users);
+    const userColumns = {
+      id: users.id,
+      email: users.email,
+      name: users.name,
+      phone: users.phone,
+      role: users.role,
+      status: users.status,
+      createdAt: users.createdAt,
+    };
 
-    res.json(rows);
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const [{ count: total }] = whereClause
+      ? await db.select({ count: sql<number>`count(*)::int` }).from(users).where(whereClause)
+      : await db.select({ count: sql<number>`count(*)::int` }).from(users);
+
+    const rows = whereClause
+      ? await db.select(userColumns).from(users).where(whereClause).limit(limit).offset(offset)
+      : await db.select(userColumns).from(users).limit(limit).offset(offset);
+
+    res.json(paginatedResponse(rows, total, page, limit));
   } catch (err) {
     next(err);
   }
@@ -82,7 +105,7 @@ export async function approveUser(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const targetId = req.params.id as string;
+    const targetId = parseUUID(req.params.id as string, "user ID");
     assertNotSelf(req.user.id, targetId);
 
     const user = await loadUser(targetId);
@@ -93,7 +116,13 @@ export async function approveUser(
         .update(users)
         .set({ status: "ACTIVE" })
         .where(eq(users.id, targetId))
-        .returning();
+        .returning({
+          id: users.id,
+          email: users.email,
+          name: users.name,
+          role: users.role,
+          status: users.status,
+        });
 
       await syncRelatedStatus(tx, row.role, row.id, "ACTIVE");
 
@@ -123,7 +152,7 @@ export async function rejectUser(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const targetId = req.params.id as string;
+    const targetId = parseUUID(req.params.id as string, "user ID");
     assertNotSelf(req.user.id, targetId);
 
     const user = await loadUser(targetId);
@@ -139,7 +168,13 @@ export async function rejectUser(
         .update(users)
         .set({ status: "SUSPENDED" })
         .where(eq(users.id, targetId))
-        .returning();
+        .returning({
+          id: users.id,
+          email: users.email,
+          name: users.name,
+          role: users.role,
+          status: users.status,
+        });
 
       await syncRelatedStatus(tx, row.role, row.id, "SUSPENDED");
 
@@ -169,7 +204,7 @@ export async function suspendUser(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const targetId = req.params.id as string;
+    const targetId = parseUUID(req.params.id as string, "user ID");
     assertNotSelf(req.user.id, targetId);
 
     const user = await loadUser(targetId);
@@ -180,7 +215,13 @@ export async function suspendUser(
         .update(users)
         .set({ status: "SUSPENDED" })
         .where(eq(users.id, targetId))
-        .returning();
+        .returning({
+          id: users.id,
+          email: users.email,
+          name: users.name,
+          role: users.role,
+          status: users.status,
+        });
 
       await syncRelatedStatus(tx, row.role, row.id, "SUSPENDED");
 
@@ -241,12 +282,12 @@ async function syncRelatedStatus(
   if (role === "RIDER") {
     await tx
       .update(riders)
-      .set({ status: riderStatusFor(userStatus) as any })
+      .set({ status: riderStatusFor(userStatus) })
       .where(eq(riders.userId, userId));
   } else if (role === "SHOP_OWNER") {
     await tx
       .update(shops)
-      .set({ status: shopStatusFor(userStatus) as any })
+      .set({ status: shopStatusFor(userStatus) })
       .where(eq(shops.ownerId, userId));
   }
 }

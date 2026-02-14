@@ -16,6 +16,7 @@ import {
   ForbiddenError,
   ConflictError,
 } from "../../lib/errors.js";
+import { parseUUID } from "../../lib/validate-uuid.js";
 import type { OrderStatus, RejectionReason } from "../../lib/order-machine.js";
 import { assertTransition } from "../../lib/order-machine.js";
 import { createOrderSchema, rejectOrderSchema } from "./orders.schema.js";
@@ -169,6 +170,8 @@ export async function createOrder(
           deliveryAddress: body.deliveryAddress,
           pickupLat: body.pickupLat ?? null,
           pickupLng: body.pickupLng ?? null,
+          pickupDate: body.pickupDate ?? null,
+          pickupSlot: body.pickupSlot ?? null,
         })
         .returning();
 
@@ -225,7 +228,7 @@ export async function cancelOrder(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const orderId = req.params.id as string;
+    const orderId = parseUUID(req.params.id as string, "order ID");
     const customerId = req.user.id;
 
     // ── 1. Fetch order ────────────────────────────────────
@@ -262,8 +265,15 @@ export async function cancelOrder(
           status: "CANCELLED",
           updatedAt: new Date(),
         })
-        .where(eq(orders.id, orderId))
+        .where(and(eq(orders.id, orderId), eq(orders.status, order.status as OrderStatus)))
         .returning();
+
+      if (!row) {
+        throw new ConflictError(
+          "Order status changed concurrently — please retry",
+          "ERR_ORDER_RACE",
+        );
+      }
 
       await tx.insert(orderEvents).values({
         orderId,
@@ -293,7 +303,7 @@ export async function acceptOrder(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const orderId = req.params.id as string;
+    const orderId = parseUUID(req.params.id as string, "order ID");
     const ownerId = req.user.id;
 
     // ── 1. Fetch order ────────────────────────────────────
@@ -338,8 +348,15 @@ export async function acceptOrder(
           status: "SHOP_ACCEPTED",
           updatedAt: new Date(),
         })
-        .where(eq(orders.id, orderId))
+        .where(and(eq(orders.id, orderId), eq(orders.status, order.status as OrderStatus)))
         .returning();
+
+      if (!row) {
+        throw new ConflictError(
+          "Order status changed concurrently — please retry",
+          "ERR_ORDER_RACE",
+        );
+      }
 
       await tx.insert(orderEvents).values({
         orderId,
@@ -372,7 +389,7 @@ export async function rejectOrder(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const orderId = req.params.id as string;
+    const orderId = parseUUID(req.params.id as string, "order ID");
     const ownerId = req.user.id;
 
     // ── 1. Validate body ──────────────────────────────────
@@ -421,8 +438,15 @@ export async function rejectOrder(
           rejectionReason: rejectionReason as RejectionReason,
           updatedAt: new Date(),
         })
-        .where(eq(orders.id, orderId))
+        .where(and(eq(orders.id, orderId), eq(orders.status, order.status as OrderStatus)))
         .returning();
+
+      if (!row) {
+        throw new ConflictError(
+          "Order status changed concurrently — please retry",
+          "ERR_ORDER_RACE",
+        );
+      }
 
       await tx.insert(orderEvents).values({
         orderId,
@@ -452,7 +476,7 @@ export async function markReady(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const orderId = req.params.id as string;
+    const orderId = parseUUID(req.params.id as string, "order ID");
     const ownerId = req.user.id;
 
     // ── 1. Fetch order ────────────────────────────────────
@@ -497,8 +521,15 @@ export async function markReady(
           status: "READY",
           updatedAt: new Date(),
         })
-        .where(eq(orders.id, orderId))
+        .where(and(eq(orders.id, orderId), eq(orders.status, order.status as OrderStatus)))
         .returning();
+
+      if (!row) {
+        throw new ConflictError(
+          "Order status changed concurrently — please retry",
+          "ERR_ORDER_RACE",
+        );
+      }
 
       await tx.insert(orderEvents).values({
         orderId,

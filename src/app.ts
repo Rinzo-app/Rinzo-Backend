@@ -6,6 +6,9 @@ import { apiRouter } from "./routes/index.js";
 
 const app = express();
 
+// ── Trust reverse proxy (Nginx / ALB / Cloudflare) ───────
+app.set("trust proxy", 1);
+
 // ── Global middleware ────────────────────────────────────
 app.use(securityHeaders);
 app.use(corsMiddleware);

@@ -10,5 +10,7 @@ export const disputes = pgTable("disputes", {
   description: text("description").notNull(),
   status: disputeStatusEnum("status").notNull().default("OPEN"),
   adminNotes: text("admin_notes"),
+  resolution: text("resolution"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });

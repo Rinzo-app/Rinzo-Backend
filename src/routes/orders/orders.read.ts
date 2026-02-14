@@ -1,6 +1,7 @@
 import type { Response, NextFunction } from "express";
-import { eq, and, desc, inArray } from "drizzle-orm";
+import { eq, and, desc, inArray, sql } from "drizzle-orm";
 import { db } from "../../db/client.js";
+import { paginationSchema, paginate, paginatedResponse } from "../../lib/pagination.js";
 import { orders, orderItems } from "../../db/schema/orders.js";
 import { orderEvents } from "../../db/schema/order-events.js";
 import { payments } from "../../db/schema/payments.js";
@@ -11,6 +12,7 @@ import {
   NotFoundError,
   ForbiddenError,
 } from "../../lib/errors.js";
+import { parseUUID } from "../../lib/validate-uuid.js";
 
 // ─────────────────────────────────────────────────────────
 // GET /api/orders/:id
@@ -29,7 +31,7 @@ export async function getOrderById(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const orderId = req.params.id as string;
+    const orderId = parseUUID(req.params.id as string, "order ID");
     const { id: userId, role } = req.user;
 
     // ── 1. Fetch order ────────────────────────────────────
@@ -110,7 +112,7 @@ export async function getOrderEvents(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const orderId = req.params.id as string;
+    const orderId = parseUUID(req.params.id as string, "order ID");
     const { id: userId, role } = req.user;
 
     // ── 1. Fetch order (for ownership check) ──────────────
@@ -184,15 +186,24 @@ export async function listCustomerOrders(
   next: NextFunction,
 ): Promise<void> {
   try {
+    const { page, limit } = paginationSchema.parse(req.query);
+    const { offset } = paginate(page, limit);
     const customerId = req.user.id;
+
+    const [{ count: total }] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(orders)
+      .where(eq(orders.customerId, customerId));
 
     const result = await db
       .select()
       .from(orders)
       .where(eq(orders.customerId, customerId))
-      .orderBy(desc(orders.createdAt));
+      .orderBy(desc(orders.createdAt))
+      .limit(limit)
+      .offset(offset);
 
-    res.status(200).json(result);
+    res.status(200).json(paginatedResponse(result, total, page, limit));
   } catch (err) {
     next(err);
   }
@@ -210,6 +221,8 @@ export async function listShopOrders(
   next: NextFunction,
 ): Promise<void> {
   try {
+    const { page, limit } = paginationSchema.parse(req.query);
+    const { offset } = paginate(page, limit);
     const ownerId = req.user.id;
 
     // Resolve all shops owned by this user
@@ -221,17 +234,24 @@ export async function listShopOrders(
     const shopIds = ownedShops.map((s) => s.id);
 
     if (shopIds.length === 0) {
-      res.status(200).json([]);
+      res.status(200).json(paginatedResponse([], 0, page, limit));
       return;
     }
+
+    const [{ count: total }] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(orders)
+      .where(inArray(orders.shopId, shopIds));
 
     const result = await db
       .select()
       .from(orders)
       .where(inArray(orders.shopId, shopIds))
-      .orderBy(desc(orders.createdAt));
+      .orderBy(desc(orders.createdAt))
+      .limit(limit)
+      .offset(offset);
 
-    res.status(200).json(result);
+    res.status(200).json(paginatedResponse(result, total, page, limit));
   } catch (err) {
     next(err);
   }
@@ -249,6 +269,8 @@ export async function listRiderOrders(
   next: NextFunction,
 ): Promise<void> {
   try {
+    const { page, limit } = paginationSchema.parse(req.query);
+    const { offset } = paginate(page, limit);
     const userId = req.user.id;
 
     // Resolve rider profile
@@ -265,13 +287,20 @@ export async function listRiderOrders(
       );
     }
 
+    const [{ count: total }] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(orders)
+      .where(eq(orders.riderId, rider.id));
+
     const result = await db
       .select()
       .from(orders)
       .where(eq(orders.riderId, rider.id))
-      .orderBy(desc(orders.createdAt));
+      .orderBy(desc(orders.createdAt))
+      .limit(limit)
+      .offset(offset);
 
-    res.status(200).json(result);
+    res.status(200).json(paginatedResponse(result, total, page, limit));
   } catch (err) {
     next(err);
   }
@@ -289,12 +318,21 @@ export async function listAllOrders(
   next: NextFunction,
 ): Promise<void> {
   try {
+    const { page, limit } = paginationSchema.parse(req.query);
+    const { offset } = paginate(page, limit);
+
+    const [{ count: total }] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(orders);
+
     const result = await db
       .select()
       .from(orders)
-      .orderBy(desc(orders.createdAt));
+      .orderBy(desc(orders.createdAt))
+      .limit(limit)
+      .offset(offset);
 
-    res.status(200).json(result);
+    res.status(200).json(paginatedResponse(result, total, page, limit));
   } catch (err) {
     next(err);
   }

@@ -13,6 +13,12 @@ import {
   ConflictError,
   NotFoundError,
 } from "../../lib/errors.js";
+import { parseUUID } from "../../lib/validate-uuid.js";
+import { z } from "zod";
+
+const refundBodySchema = z.object({
+  note: z.string().max(2000).optional(),
+});
 
 // ─────────────────────────────────────────────────────────
 // POST /api/admin/orders/:id/refund
@@ -28,9 +34,10 @@ export async function refundOrder(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const orderId = req.params.id as string;
+    const orderId = parseUUID(req.params.id as string, "order ID");
     const adminId = req.user.id;
-    const note = typeof req.body?.note === "string" ? req.body.note : null;
+    const { note: rawNote } = refundBodySchema.parse(req.body ?? {});
+    const note = rawNote ?? null;
 
     // ── 1. Fetch order ────────────────────────────────────
     const [order] = await db

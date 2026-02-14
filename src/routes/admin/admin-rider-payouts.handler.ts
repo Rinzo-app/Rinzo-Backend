@@ -7,6 +7,7 @@ import { ledgerEntries } from "../../db/schema/ledger-entries.js";
 import { adminEvents } from "../../db/schema/admin-events.js";
 import type { AuthenticatedRequest } from "../../lib/types.js";
 import { NotFoundError, BadRequestError } from "../../lib/errors.js";
+import { parseUUID } from "../../lib/validate-uuid.js";
 
 // ── Validation ─────────────────────────────────────────
 
@@ -28,7 +29,7 @@ export async function markRiderPayout(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const riderId = req.params.id as string;
+    const riderId = parseUUID(req.params.id as string, "rider ID");
     const adminId = req.user.id;
 
     // ── Validate body ───────────────────────────────────
@@ -112,7 +113,7 @@ export async function getRiderBalance(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const riderId = req.params.id as string;
+    const riderId = parseUUID(req.params.id as string, "rider ID");
 
     // ── Verify rider exists ─────────────────────────────
     const [rider] = await db

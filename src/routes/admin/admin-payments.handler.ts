@@ -11,6 +11,7 @@ import {
   BadRequestError,
   NotFoundError,
 } from "../../lib/errors.js";
+import { parseUUID } from "../../lib/validate-uuid.js";
 
 // ─────────────────────────────────────────────────────────
 // POST /api/admin/payments/:id/mark-collected
@@ -24,7 +25,7 @@ export async function markPaymentCollected(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const paymentId = req.params.id as string;
+    const paymentId = parseUUID(req.params.id as string, "payment ID");
     const adminId = req.user.id;
 
     // ── 1. Fetch payment ──────────────────────────────────

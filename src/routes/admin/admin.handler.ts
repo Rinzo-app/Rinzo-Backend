@@ -1,5 +1,5 @@
 import type { Response, NextFunction } from "express";
-import { eq } from "drizzle-orm";
+import { eq, and, or } from "drizzle-orm";
 import { db } from "../../db/client.js";
 import { orders } from "../../db/schema/orders.js";
 import { orderEvents } from "../../db/schema/order-events.js";
@@ -9,7 +9,9 @@ import type { AuthenticatedRequest } from "../../lib/types.js";
 import {
   BadRequestError,
   NotFoundError,
+  ConflictError,
 } from "../../lib/errors.js";
+import { parseUUID } from "../../lib/validate-uuid.js";
 import type { OrderStatus } from "../../lib/order-machine.js";
 import { assertTransition } from "../../lib/order-machine.js";
 import { assignPickupSchema } from "./admin.schema.js";
@@ -24,7 +26,7 @@ export async function assignPickup(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const orderId = req.params.id as string;
+    const orderId = parseUUID(req.params.id as string, "order ID");
 
     // ── 1. Validate body ──────────────────────────────────
     const { riderId } = assignPickupSchema.parse(req.body);
@@ -40,11 +42,11 @@ export async function assignPickup(
       throw new NotFoundError("Order not found", "ERR_ORDER_NOT_FOUND");
     }
 
-    // ── 3. Validate rider exists ──────────────────────────
+    // ── 3. Validate rider exists (accept riders.id OR users.id) ─
     const [rider] = await db
       .select()
       .from(riders)
-      .where(eq(riders.id, riderId))
+      .where(or(eq(riders.id, riderId), eq(riders.userId, riderId)))
       .limit(1);
 
     if (!rider) {
@@ -64,11 +66,18 @@ export async function assignPickup(
         .update(orders)
         .set({
           status: "PICKUP_ASSIGNED",
-          riderId,
+          riderId: rider.id,
           updatedAt: new Date(),
         })
-        .where(eq(orders.id, orderId))
+        .where(and(eq(orders.id, orderId), eq(orders.status, order.status as OrderStatus)))
         .returning();
+
+      if (!row) {
+        throw new ConflictError(
+          "Order status changed concurrently — please retry",
+          "ERR_ORDER_RACE",
+        );
+      }
 
       await tx.insert(orderEvents).values({
         orderId,
@@ -83,7 +92,7 @@ export async function assignPickup(
         action: "ASSIGN_PICKUP",
         targetType: "ORDER",
         targetId: orderId as string,
-        details: { riderId, previousStatus: order.status },
+        details: { riderId: rider.id, previousStatus: order.status },
       });
 
       return row;
@@ -106,7 +115,7 @@ export async function assignDelivery(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const orderId = req.params.id as string;
+    const orderId = parseUUID(req.params.id as string, "order ID");
 
     // ── 1. Fetch order ────────────────────────────────────
     const [order] = await db
@@ -142,8 +151,15 @@ export async function assignDelivery(
           status: "OUT_FOR_DELIVERY",
           updatedAt: new Date(),
         })
-        .where(eq(orders.id, orderId))
+        .where(and(eq(orders.id, orderId), eq(orders.status, order.status as OrderStatus)))
         .returning();
+
+      if (!row) {
+        throw new ConflictError(
+          "Order status changed concurrently — please retry",
+          "ERR_ORDER_RACE",
+        );
+      }
 
       await tx.insert(orderEvents).values({
         orderId,

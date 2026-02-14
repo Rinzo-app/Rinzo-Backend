@@ -1,57 +1,57 @@
 import { Router } from "express";
 import { requireAuth } from "../../middleware/require-auth.js";
 import { requireRole } from "../../middleware/require-role.js";
+import { authed } from "../../lib/typed-handler.js";
 import { createOrder, cancelOrder, acceptOrder, rejectOrder, markReady } from "./orders.handler.js";
 import { getOrderById, getOrderEvents } from "./orders.read.js";
-import type { AuthenticatedRequest } from "../../lib/types.js";
 
 const ordersRouter = Router();
 
 ordersRouter.get(
   "/:id",
   requireAuth,
-  getOrderById as any,
+  authed(getOrderById),
 );
 
 ordersRouter.get(
   "/:id/events",
   requireAuth,
-  getOrderEvents as any,
+  authed(getOrderEvents),
 );
 
 ordersRouter.post(
   "/",
   requireAuth,
   requireRole("CUSTOMER"),
-  createOrder as any, // AuthenticatedRequest narrowing
+  authed(createOrder),
 );
 
 ordersRouter.post(
   "/:id/cancel",
   requireAuth,
   requireRole("CUSTOMER"),
-  cancelOrder as any,
+  authed(cancelOrder),
 );
 
 ordersRouter.post(
   "/:id/accept",
   requireAuth,
   requireRole("SHOP_OWNER"),
-  acceptOrder as any,
+  authed(acceptOrder),
 );
 
 ordersRouter.post(
   "/:id/reject",
   requireAuth,
   requireRole("SHOP_OWNER"),
-  rejectOrder as any,
+  authed(rejectOrder),
 );
 
 ordersRouter.post(
   "/:id/ready",
   requireAuth,
   requireRole("SHOP_OWNER"),
-  markReady as any,
+  authed(markReady),
 );
 
 export { ordersRouter };

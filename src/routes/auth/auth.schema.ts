@@ -27,5 +27,6 @@ export const registerRiderSchema = z.object({
   phone: phoneField,
   email: emailField,
   vehicleType: z.string().min(1).max(50),
+  vehicleNumber: z.string().max(30).optional().default(""),
 });
 export type RegisterRiderInput = z.infer<typeof registerRiderSchema>;
