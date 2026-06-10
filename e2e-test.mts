@@ -330,8 +330,9 @@ log("Customer browses shops → approved shop is visible");
   );
 }
 
-log("Customer places an order (COD)");
+log("Customer places an order (COD, with idempotency key)");
 let orderId: string;
+const orderKey = `e2e-key-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 {
   const { status, body } = await api("POST", "/api/orders", customerToken, {
     shopId,
@@ -340,6 +341,7 @@ let orderId: string;
     deliveryAddress: "12 Customer Lane, Bengaluru",
     pickupLat: 12.97,
     pickupLng: 77.593,
+    idempotencyKey: orderKey,
   });
   assert(status === 201, `create order → ${status}: ${JSON.stringify(body)}`);
   orderId = body.order.id;
@@ -347,6 +349,21 @@ let orderId: string;
   assert(body.order.totalAmount === 10000, `total should be 10000, got ${body.order.totalAmount}`);
   assert(body.order.deliveryFee > 0, "delivery fee should be > 0 (coords were sent)");
   assert(body.payment?.status === "PENDING", "COD payment should be auto-created as PENDING");
+}
+
+log("Replaying the same idempotency key returns the SAME order (no duplicate)");
+{
+  const { status, body } = await api("POST", "/api/orders", customerToken, {
+    shopId,
+    items: [{ serviceId, quantity: 2 }],
+    pickupAddress: "12 Customer Lane, Bengaluru",
+    deliveryAddress: "12 Customer Lane, Bengaluru",
+    pickupLat: 12.97,
+    pickupLng: 77.593,
+    idempotencyKey: orderKey,
+  });
+  assert(status === 200, `replay should be 200, got ${status}: ${JSON.stringify(body)}`);
+  assert(body.order.id === orderId, `replay returned a different order: ${body.order.id}`);
 }
 
 log("Owner accepts → auto-assign should move it to PICKUP_ASSIGNED");

@@ -8,7 +8,9 @@ export class AppError extends Error {
     super(message);
     this.statusCode = statusCode;
     this.code = code ?? "ERR_UNKNOWN";
-    Object.setPrototypeOf(this, AppError.prototype);
+    // new.target, not AppError: pinning to AppError.prototype would
+    // strip subclass identity (instanceof ForbiddenError → false).
+    Object.setPrototypeOf(this, new.target.prototype);
   }
 }
 

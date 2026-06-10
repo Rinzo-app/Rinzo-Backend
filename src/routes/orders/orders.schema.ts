@@ -20,6 +20,8 @@ export const createOrderSchema = z.object({
   // Optional scheduling fields
   pickupDate: z.string().max(20).optional(),
   pickupSlot: z.string().max(50).optional(),
+  // Client-generated dedupe key (e.g. a UUID per checkout attempt)
+  idempotencyKey: z.string().min(8).max(64).optional(),
 });
 
 export type CreateOrderInput = z.infer<typeof createOrderSchema>;

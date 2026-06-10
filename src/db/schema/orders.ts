@@ -28,6 +28,9 @@ export const orders = pgTable("orders", {
   // Scheduling fields (nullable — customer may not have selected)
   pickupDate: varchar("pickup_date", { length: 20 }),
   pickupSlot: varchar("pickup_slot", { length: 50 }),
+  // Client-generated key to dedupe double-submissions (nullable;
+  // Postgres unique indexes permit multiple NULLs)
+  idempotencyKey: varchar("idempotency_key", { length: 64 }).unique(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

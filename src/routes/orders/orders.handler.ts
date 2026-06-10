@@ -45,6 +45,20 @@ export async function createOrder(
     const body = createOrderSchema.parse(req.body);
     const customerId = req.user.id;
 
+    // ── 1b. Idempotency replay ───────────────────────────
+    // Same key = same checkout attempt (double-tap, network retry).
+    // Return the already-created order instead of duplicating it.
+    if (body.idempotencyKey) {
+      const existing = await findOrderByIdempotencyKey(
+        body.idempotencyKey,
+        customerId,
+      );
+      if (existing) {
+        res.status(200).json(existing);
+        return;
+      }
+    }
+
     // ── 2. Load & verify shop ────────────────────────────
     const [shop] = await db
       .select()
@@ -66,28 +80,6 @@ export async function createOrder(
         "Shop is currently closed",
         "ERR_SHOP_CLOSED",
       );
-    }
-
-    // ── 3. Capacity & auto-reject ────────────────────────
-    const [{ count: activeCount }] = await db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(orders)
-      .where(
-        and(
-          eq(orders.shopId, shop.id),
-          inArray(orders.status, ACTIVE_STATUSES),
-        ),
-      );
-
-    if (activeCount >= shop.dailyCapacity) {
-      if (shop.autoRejectEnabled) {
-        throw new ConflictError(
-          "Shop has reached daily capacity",
-          "ERR_SHOP_CAPACITY_FULL",
-        );
-      }
-      // If auto-reject is off, capacity is soft — allow the order through
-      // but the shop may reject manually later.
     }
 
     // ── 4. Load & validate services ──────────────────────
@@ -150,72 +142,152 @@ export async function createOrder(
     }
 
     // ── 6. Insert order + order_items in a transaction ───
-    const result = await db.transaction(async (tx) => {
-      const [order] = await tx
-        .insert(orders)
-        .values({
-          customerId,
-          shopId: shop.id,
-          items: itemRows.map(({ serviceId, serviceName, price, quantity }) => ({
-            serviceId,
-            serviceName,
-            price,
-            quantity,
-          })),
-          totalAmount,
-          platformFee: PLATFORM_FEE,
-          deliveryFee,
-          status: "PLACED",
-          pickupAddress: body.pickupAddress,
-          deliveryAddress: body.deliveryAddress,
-          pickupLat: body.pickupLat ?? null,
-          pickupLng: body.pickupLng ?? null,
-          pickupDate: body.pickupDate ?? null,
-          pickupSlot: body.pickupSlot ?? null,
-        })
-        .returning();
+    let result;
+    try {
+      result = await db.transaction(async (tx) => {
+        // Lock the shop row so concurrent orders serialise on the
+        // capacity check (count-then-insert was racy without it).
+        await tx.execute(
+          sql`SELECT id FROM shops WHERE id = ${shop.id} FOR UPDATE`,
+        );
 
-      const orderItemValues = itemRows.map((row) => ({
-        orderId: order.id,
-        serviceId: row.serviceId,
-        serviceName: row.serviceName,
-        price: row.price,
-        quantity: row.quantity,
-      }));
+        // ── Capacity & auto-reject (inside the lock) ──
+        const [{ count: activeCount }] = await tx
+          .select({ count: sql<number>`count(*)::int` })
+          .from(orders)
+          .where(
+            and(
+              eq(orders.shopId, shop.id),
+              inArray(orders.status, ACTIVE_STATUSES),
+            ),
+          );
 
-      const insertedItems = await tx
-        .insert(orderItems)
-        .values(orderItemValues)
-        .returning();
+        if (activeCount >= shop.dailyCapacity && shop.autoRejectEnabled) {
+          throw new ConflictError(
+            "Shop has reached daily capacity",
+            "ERR_SHOP_CAPACITY_FULL",
+          );
+        }
+        // If auto-reject is off, capacity is soft — allow the order
+        // through; the shop may reject manually later.
 
-      await tx.insert(orderEvents).values({
-        orderId: order.id,
-        fromStatus: null,
-        toStatus: "PLACED",
-        actor: "CUSTOMER",
-        actorId: customerId,
-      });
+        const [order] = await tx
+          .insert(orders)
+          .values({
+            customerId,
+            shopId: shop.id,
+            items: itemRows.map(({ serviceId, serviceName, price, quantity }) => ({
+              serviceId,
+              serviceName,
+              price,
+              quantity,
+            })),
+            totalAmount,
+            platformFee: PLATFORM_FEE,
+            deliveryFee,
+            status: "PLACED",
+            pickupAddress: body.pickupAddress,
+            deliveryAddress: body.deliveryAddress,
+            pickupLat: body.pickupLat ?? null,
+            pickupLng: body.pickupLng ?? null,
+            pickupDate: body.pickupDate ?? null,
+            pickupSlot: body.pickupSlot ?? null,
+            idempotencyKey: body.idempotencyKey ?? null,
+          })
+          .returning();
 
-      // ── Auto-create payment record (COD / PENDING) ──
-      // payment.amount = services total + platform fee + delivery fee
-      const [payment] = await tx
-        .insert(payments)
-        .values({
+        const orderItemValues = itemRows.map((row) => ({
           orderId: order.id,
-          amount: order.totalAmount + order.platformFee + order.deliveryFee,
-          method: "COD",
-          status: "PENDING",
-        })
-        .returning();
+          serviceId: row.serviceId,
+          serviceName: row.serviceName,
+          price: row.price,
+          quantity: row.quantity,
+        }));
 
-      return { order, items: insertedItems, payment };
-    });
+        const insertedItems = await tx
+          .insert(orderItems)
+          .values(orderItemValues)
+          .returning();
+
+        await tx.insert(orderEvents).values({
+          orderId: order.id,
+          fromStatus: null,
+          toStatus: "PLACED",
+          actor: "CUSTOMER",
+          actorId: customerId,
+        });
+
+        // ── Auto-create payment record (COD / PENDING) ──
+        // payment.amount = services total + platform fee + delivery fee
+        const [payment] = await tx
+          .insert(payments)
+          .values({
+            orderId: order.id,
+            amount: order.totalAmount + order.platformFee + order.deliveryFee,
+            method: "COD",
+            status: "PENDING",
+          })
+          .returning();
+
+        return { order, items: insertedItems, payment };
+      });
+    } catch (err) {
+      // A concurrent duplicate submission lost the unique-index race —
+      // return the order the winning request created.
+      if (body.idempotencyKey && isUniqueViolation(err)) {
+        const existing = await findOrderByIdempotencyKey(
+          body.idempotencyKey,
+          customerId,
+        );
+        if (existing) {
+          res.status(200).json(existing);
+          return;
+        }
+        throw new ConflictError(
+          "Idempotency key is already in use",
+          "ERR_IDEMPOTENCY_CONFLICT",
+        );
+      }
+      throw err;
+    }
 
     // ── 7. Respond ───────────────────────────────────────
     res.status(201).json(result);
   } catch (err) {
     next(err);
   }
+}
+
+/** Walk an error chain looking for a Postgres unique violation (23505). */
+function isUniqueViolation(err: unknown): boolean {
+  let e: any = err;
+  for (let i = 0; i < 5 && e; i++) {
+    if (e.code === "23505") return true;
+    e = e.cause;
+  }
+  return false;
+}
+
+/** Look up a previously created order by its idempotency key. */
+async function findOrderByIdempotencyKey(key: string, customerId: string) {
+  const [order] = await db
+    .select()
+    .from(orders)
+    .where(eq(orders.idempotencyKey, key))
+    .limit(1);
+  if (!order || order.customerId !== customerId) return null;
+
+  const items = await db
+    .select()
+    .from(orderItems)
+    .where(eq(orderItems.orderId, order.id));
+  const [payment] = await db
+    .select()
+    .from(payments)
+    .where(eq(payments.orderId, order.id))
+    .limit(1);
+
+  return { order, items, payment: payment ?? null };
 }
 
 // ─────────────────────────────────────────────────────────
