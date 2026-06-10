@@ -4,7 +4,7 @@ import { z } from "zod";
 import { db } from "../../db/client.js";
 import { shops } from "../../db/schema/shops.js";
 import type { AuthenticatedRequest } from "../../lib/types.js";
-import { BadRequestError, NotFoundError } from "../../lib/errors.js";
+import { BadRequestError, ConflictError, NotFoundError } from "../../lib/errors.js";
 
 // ── Helper: resolve first shop owned by user ─────────────
 
@@ -32,6 +32,86 @@ const updateSettingsBody = z.object({
   autoRejectEnabled: z.boolean().optional(),
 });
 
+// ── Zod schema for shop creation ─────────────────────────
+
+const createShopBody = z.object({
+  name: z.string().min(1).max(200),
+  phone: z.string().min(4).max(20),
+  address: z.string().min(1).max(500),
+  latitude: z.number().min(-90).max(90),
+  longitude: z.number().min(-180).max(180),
+  openTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+  closeTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+});
+
+// ──────────────────────────────────────────────────────────
+// POST /api/shop
+//
+// Creates the owner's shop in PENDING status (admin must
+// approve before it becomes visible to customers).
+// One shop per owner in v1.
+// ──────────────────────────────────────────────────────────
+
+export async function createShop(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const ownerId = req.user.id;
+
+    const parsed = createShopBody.safeParse(req.body);
+    if (!parsed.success) {
+      throw new BadRequestError(
+        parsed.error.errors[0]?.message ?? "Invalid body",
+      );
+    }
+
+    const [existing] = await db
+      .select({ id: shops.id })
+      .from(shops)
+      .where(eq(shops.ownerId, ownerId))
+      .limit(1);
+
+    if (existing) {
+      throw new ConflictError(
+        "You already have a shop registered",
+        "ERR_SHOP_EXISTS",
+      );
+    }
+
+    const [shop] = await db
+      .insert(shops)
+      .values({
+        ownerId,
+        name: parsed.data.name,
+        phone: parsed.data.phone,
+        address: parsed.data.address,
+        latitude: parsed.data.latitude,
+        longitude: parsed.data.longitude,
+        ...(parsed.data.openTime ? { openTime: parsed.data.openTime } : {}),
+        ...(parsed.data.closeTime ? { closeTime: parsed.data.closeTime } : {}),
+        status: "PENDING",
+      })
+      .returning();
+
+    res.status(201).json({
+      id: shop.id,
+      name: shop.name,
+      phone: shop.phone,
+      address: shop.address,
+      lat: shop.latitude,
+      lng: shop.longitude,
+      status: shop.status,
+      isOpen: shop.isOpen,
+      dailyCapacity: shop.dailyCapacity,
+      autoRejectEnabled: shop.autoRejectEnabled,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
 // ──────────────────────────────────────────────────────────
 // GET /api/shop/settings
 // ──────────────────────────────────────────────────────────
@@ -51,6 +131,7 @@ export async function getSettings(
       address: shop.address,
       lat: shop.latitude,
       lng: shop.longitude,
+      status: shop.status,
       isOpen: shop.isOpen,
       dailyCapacity: shop.dailyCapacity,
       autoRejectEnabled: shop.autoRejectEnabled,
@@ -107,6 +188,7 @@ export async function patchSettings(
       address: updated.address,
       lat: updated.latitude,
       lng: updated.longitude,
+      status: updated.status,
       isOpen: updated.isOpen,
       dailyCapacity: updated.dailyCapacity,
       autoRejectEnabled: updated.autoRejectEnabled,

@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { requireAuth } from "../../middleware/require-auth.js";
+import { authLimiter } from "../../middleware/rate-limit.js";
 import { authed } from "../../lib/typed-handler.js";
 import {
   registerCustomer,
@@ -10,9 +11,12 @@ import {
 
 const authRouter = Router();
 
-authRouter.post("/register/customer", registerCustomer);
-authRouter.post("/register/shop", registerShop);
-authRouter.post("/register/rider", registerRider);
+// Strict limiter on registration only — /me is called by every app on
+// startup and must not share the 5/min budget (mobile NAT groups many
+// users behind one IP).
+authRouter.post("/register/customer", authLimiter, registerCustomer);
+authRouter.post("/register/shop", authLimiter, registerShop);
+authRouter.post("/register/rider", authLimiter, registerRider);
 authRouter.get("/me", requireAuth, authed(getMe));
 
 export { authRouter };

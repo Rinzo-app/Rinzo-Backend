@@ -10,9 +10,18 @@ import {
   updateService,
   deleteService,
 } from "./shop-services.handler.js";
-import { getSettings, patchSettings } from "./shop-settings.handler.js";
+import { createShop, getSettings, patchSettings } from "./shop-settings.handler.js";
 
 const shopRouter = Router();
+
+// ── Shop onboarding ──────────────────────────────────────
+
+shopRouter.post(
+  "/",
+  requireAuth,
+  requireRole("SHOP_OWNER"),
+  authed(createShop),
+);
 
 shopRouter.get(
   "/orders",

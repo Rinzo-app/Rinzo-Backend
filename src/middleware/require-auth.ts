@@ -125,7 +125,10 @@ export async function requireAuth(
  * (which clients need to detect their suspension status).
  */
 function checkSuspended(req: Request, next: NextFunction): void {
-  if (req.user?.status === "SUSPENDED" && req.originalUrl !== "/api/auth/me") {
+  // baseUrl + path ignores the query string (originalUrl would not),
+  // so /api/auth/me?x=1 still passes for suspended users.
+  const routePath = req.baseUrl + req.path;
+  if (req.user?.status === "SUSPENDED" && routePath !== "/api/auth/me") {
     return next(
       new ForbiddenError(
         "Your account has been suspended",

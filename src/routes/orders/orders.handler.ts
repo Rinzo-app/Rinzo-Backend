@@ -370,7 +370,18 @@ export async function acceptOrder(
     });
 
     // ── 5. Auto-assign a rider for pickup (fire-and-forget) ──
-    tryAutoAssignPickup(orderId).catch(() => {});
+    tryAutoAssignPickup(orderId).catch((err) => {
+      console.error(
+        JSON.stringify({
+          level: "error",
+          type: "AUTO_ASSIGN_ERROR",
+          stage: "PICKUP_DISPATCH",
+          orderId,
+          message: err instanceof Error ? err.message : String(err),
+          ts: new Date().toISOString(),
+        }),
+      );
+    });
 
     // ── 6. Respond ────────────────────────────────────────
     res.status(200).json(updated);
@@ -543,7 +554,18 @@ export async function markReady(
     });
 
     // ── 5. Auto-assign rider for delivery (fire-and-forget) ──
-    tryAutoAssignDelivery(orderId).catch(() => {});
+    tryAutoAssignDelivery(orderId).catch((err) => {
+      console.error(
+        JSON.stringify({
+          level: "error",
+          type: "AUTO_ASSIGN_ERROR",
+          stage: "DELIVERY_DISPATCH",
+          orderId,
+          message: err instanceof Error ? err.message : String(err),
+          ts: new Date().toISOString(),
+        }),
+      );
+    });
 
     // ── 6. Respond ────────────────────────────────────────
     res.status(200).json(updated);

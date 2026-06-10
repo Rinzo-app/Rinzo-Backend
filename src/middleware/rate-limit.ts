@@ -1,7 +1,9 @@
 import rateLimit from "express-rate-limit";
 
 /**
- * Auth limiter — applied to /api/auth/* routes.
+ * Auth limiter — applied to the /api/auth/register/* routes only.
+ * (/api/auth/me is exempt: every app calls it on startup and many
+ * users can share one IP behind mobile-carrier NAT.)
  * 5 requests per minute per IP.
  */
 export const authLimiter = rateLimit({

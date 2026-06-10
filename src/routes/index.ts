@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { authLimiter, writeLimiter } from "../middleware/rate-limit.js";
+import { writeLimiter } from "../middleware/rate-limit.js";
 import { ordersRouter } from "./orders/index.js";
 import { adminRouter } from "./admin/index.js";
 import { authRouter } from "./auth/index.js";
@@ -13,8 +13,8 @@ import { favoritesRouter } from "./favorites/index.js";
 
 const apiRouter = Router();
 
-// ── Rate limiters (applied at the sub-router level) ──────
-apiRouter.use("/auth", authLimiter, authRouter);
+// ── Auth routes (register endpoints rate-limit themselves) ──
+apiRouter.use("/auth", authRouter);
 
 // Write-limiter for all POST/PATCH/PUT/DELETE across every sub-router
 apiRouter.use((req, res, next) => {

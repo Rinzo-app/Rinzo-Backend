@@ -8,6 +8,20 @@ import type { OrderStatus } from "./order-machine.js";
 import { assertTransition } from "./order-machine.js";
 import { haversineDistance } from "./geo.js";
 
+/** Structured error log for auto-assign failures (never thrown). */
+function logAutoAssignError(stage: string, orderId: string, err: unknown): void {
+  console.error(
+    JSON.stringify({
+      level: "error",
+      type: "AUTO_ASSIGN_ERROR",
+      stage,
+      orderId,
+      message: err instanceof Error ? err.message : String(err),
+      ts: new Date().toISOString(),
+    }),
+  );
+}
+
 // ─────────────────────────────────────────────────────────
 // AUTO-ASSIGN RIDER  (geo-aware with FIFO fallback)
 //
@@ -176,8 +190,9 @@ export async function tryAutoAssignPickup(
     });
 
     return rider.id;
-  } catch {
+  } catch (err) {
     // Non-fatal — order stays SHOP_ACCEPTED for manual assignment
+    logAutoAssignError("PICKUP", orderId, err);
     return null;
   }
 }
@@ -283,8 +298,9 @@ export async function tryAutoAssignDelivery(
     });
 
     return riderId;
-  } catch {
+  } catch (err) {
     // Non-fatal — order stays READY for manual dispatch
+    logAutoAssignError("DELIVERY", orderId, err);
     return null;
   }
 }
