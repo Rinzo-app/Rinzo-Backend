@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
-    "start": "node dist/server.js"
+    "start": "node dist/server.js",
+    "db:migrate": "drizzle-kit migrate"
   },
   "dependencies": {
     "cors": "^2.8.5",

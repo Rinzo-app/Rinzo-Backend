@@ -10,11 +10,10 @@ import * as schema from "./schema/index.js";
 // in production.
 //
 // SSL behaviour:
-//   production  → TLS enabled, certificate verification ON.
-//                 Set DB_CA_CERT to a PEM-encoded CA bundle
-//                 if your provider uses a private CA.
-//   development → TLS disabled (local Postgres typically
-//                 does not use certificates).
+//   local Postgres (localhost/127.0.0.1) → TLS disabled.
+//   anything else (Neon, Supabase, Railway, …) → TLS enabled
+//   with certificate verification ON, in every environment.
+//   Neon rejects non-TLS connections, so dev must use TLS too.
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) {
@@ -22,17 +21,18 @@ if (!connectionString) {
 }
 
 const isProduction = process.env.NODE_ENV === "production";
+const isLocalDb = /@(localhost|127\.0\.0\.1)[:/]/.test(connectionString);
 
 const pool = new pg.Pool({
   connectionString,
-  ssl: isProduction
-    ? {
+  ssl: isLocalDb
+    ? false
+    : {
         rejectUnauthorized: true,
-        // Uncomment the line below if your database provider
-        // (e.g. Supabase, Neon, Railway) supplies a custom CA:
-        // ca: process.env.DB_CA_CERT,
-      }
-    : false,
+        // Set DB_CA_CERT to a PEM-encoded CA bundle if your
+        // database provider uses a private CA:
+        ...(process.env.DB_CA_CERT ? { ca: process.env.DB_CA_CERT } : {}),
+      },
 
   // ── Connection pool tuning ─────────────────────────────
   max: isProduction ? 20 : 5,

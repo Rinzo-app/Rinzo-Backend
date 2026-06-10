@@ -64,6 +64,13 @@
       "when": 1738972800008,
       "tag": "0008_add_refunds_and_ledger_reversals",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1738972800009,
+      "tag": "0009_sync_schema_drift",
+      "breakpoints": true
     }
   ]
 }
