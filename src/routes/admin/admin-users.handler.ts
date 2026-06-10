@@ -28,7 +28,9 @@ type RiderStatus = "PENDING" | "APPROVED" | "ACTIVE" | "SUSPENDED";
 type ShopStatus = "PENDING" | "APPROVED" | "REJECTED" | "SUSPENDED";
 
 function riderStatusFor(userStatus: string): RiderStatus {
-  if (userStatus === "ACTIVE") return "APPROVED";
+  // Approval activates the rider directly — auto-assign only
+  // dispatches to riders with status ACTIVE (domain contract §5).
+  if (userStatus === "ACTIVE") return "ACTIVE";
   if (userStatus === "SUSPENDED") return "SUSPENDED";
   return "PENDING";
 }
@@ -110,6 +112,23 @@ export async function approveUser(
 
     const user = await loadUser(targetId);
     assertTransition(user.status, "ACTIVE");
+
+    // A shop owner must have created their shop before approval —
+    // otherwise the approval has nothing to approve and a shop
+    // created later would be stuck PENDING with no approval path.
+    if (user.role === "SHOP_OWNER") {
+      const [shop] = await db
+        .select({ id: shops.id })
+        .from(shops)
+        .where(eq(shops.ownerId, targetId))
+        .limit(1);
+      if (!shop) {
+        throw new BadRequestError(
+          "This shop owner has not set up their shop yet — approve after the shop is created",
+          "ERR_NO_SHOP_TO_APPROVE",
+        );
+      }
+    }
 
     const [updated] = await db.transaction(async (tx) => {
       const [row] = await tx

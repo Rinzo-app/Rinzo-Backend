@@ -123,7 +123,9 @@ export async function registerShop(
         name: body.data.name,
         phone: body.data.phone,
         email: body.data.email ?? decoded.email ?? null,
-        status: "ACTIVE",
+        // Domain contract §2: shop owners start PENDING and are
+        // activated by admin approval (which also approves their shop).
+        status: "PENDING",
       })
       .returning({
         id: users.id,
@@ -166,7 +168,9 @@ export async function registerRider(
           name: body.data.name,
           phone: body.data.phone,
           email: body.data.email ?? decoded.email ?? null,
-          status: "ACTIVE",
+          // Domain contract §2: riders start PENDING and are
+          // activated by admin approval.
+          status: "PENDING",
         })
         .returning({
           id: users.id,
