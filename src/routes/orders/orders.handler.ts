@@ -21,6 +21,7 @@ import type { OrderStatus, RejectionReason } from "../../lib/order-machine.js";
 import { assertTransition } from "../../lib/order-machine.js";
 import { createOrderSchema, rejectOrderSchema } from "./orders.schema.js";
 import { tryAutoAssignPickup, tryAutoAssignDelivery } from "../../lib/auto-assign.js";
+import { notifyUserAsync } from "../../lib/push.js";
 
 // ── Active statuses that count toward daily capacity ────
 const ACTIVE_STATUSES: OrderStatus[] = [
@@ -251,7 +252,14 @@ export async function createOrder(
       throw err;
     }
 
-    // ── 7. Respond ───────────────────────────────────────
+    // ── 7. Notify shop owner + respond ───────────────────
+    notifyUserAsync(
+      shop.ownerId,
+      "New order 🧺",
+      `${itemRows.length} item${itemRows.length !== 1 ? "s" : ""} — ₹${((totalAmount + PLATFORM_FEE + deliveryFee) / 100).toFixed(0)}. Tap to accept.`,
+      { type: "ORDER_PLACED", orderId: result.order.id },
+    );
+
     res.status(201).json(result);
   } catch (err) {
     next(err);
@@ -358,7 +366,21 @@ export async function cancelOrder(
       return row;
     });
 
-    // ── 5. Respond ────────────────────────────────────────
+    // ── 5. Notify shop owner + respond ────────────────────
+    const [cancelledShop] = await db
+      .select({ ownerId: shops.ownerId })
+      .from(shops)
+      .where(eq(shops.id, order.shopId))
+      .limit(1);
+    if (cancelledShop) {
+      notifyUserAsync(
+        cancelledShop.ownerId,
+        "Order cancelled",
+        "A customer cancelled their order before acceptance.",
+        { type: "ORDER_CANCELLED", orderId },
+      );
+    }
+
     res.status(200).json(updated);
   } catch (err) {
     next(err);
@@ -441,7 +463,15 @@ export async function acceptOrder(
       return row;
     });
 
-    // ── 5. Auto-assign a rider for pickup (fire-and-forget) ──
+    // ── 5. Notify customer ────────────────────────────────
+    notifyUserAsync(
+      order.customerId,
+      "Order accepted ✅",
+      `${shop.name} accepted your order. A rider will pick it up soon.`,
+      { type: "ORDER_ACCEPTED", orderId },
+    );
+
+    // ── 6. Auto-assign a rider for pickup (fire-and-forget) ──
     tryAutoAssignPickup(orderId).catch((err) => {
       console.error(
         JSON.stringify({
@@ -542,7 +572,14 @@ export async function rejectOrder(
       return row;
     });
 
-    // ── 6. Respond ────────────────────────────────────────
+    // ── 6. Notify customer + respond ──────────────────────
+    notifyUserAsync(
+      order.customerId,
+      "Order declined",
+      `${shop.name} couldn't take your order (${rejectionReason.replaceAll("_", " ").toLowerCase()}). Please try another shop.`,
+      { type: "ORDER_REJECTED", orderId },
+    );
+
     res.status(200).json(updated);
   } catch (err) {
     next(err);

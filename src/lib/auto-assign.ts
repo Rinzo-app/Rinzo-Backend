@@ -7,6 +7,7 @@ import { orderEvents } from "../db/schema/order-events.js";
 import type { OrderStatus } from "./order-machine.js";
 import { assertTransition } from "./order-machine.js";
 import { haversineDistance } from "./geo.js";
+import { notifyUserAsync } from "./push.js";
 
 // A rider is "busy" while physically carrying out a leg.
 // (AT_SHOP / READY keep the order's riderId but the rider is free.)
@@ -174,6 +175,7 @@ export async function tryAutoAssignPickup(
       riderId: orders.riderId,
       status: orders.status,
       shopId: orders.shopId,
+      customerId: orders.customerId,
     })
     .from(orders)
     .where(eq(orders.id, orderId))
@@ -253,7 +255,15 @@ export async function tryAutoAssignPickup(
         return true;
       });
 
-      if (assigned) return rider.id;
+      if (assigned) {
+        notifyUserAsync(
+          rider.userId,
+          "New pickup 🛵",
+          "You've been assigned a laundry pickup. Open the app for details.",
+          { type: "PICKUP_ASSIGNED", orderId },
+        );
+        return rider.id;
+      }
     }
 
     return null; // all candidates raced away — order stays SHOP_ACCEPTED
@@ -284,6 +294,7 @@ export async function tryAutoAssignDelivery(
       riderId: orders.riderId,
       status: orders.status,
       shopId: orders.shopId,
+      customerId: orders.customerId,
     })
     .from(orders)
     .where(eq(orders.id, orderId))
@@ -380,7 +391,21 @@ export async function tryAutoAssignDelivery(
         return true;
       });
 
-      if (assigned) return rider.id;
+      if (assigned) {
+        notifyUserAsync(
+          rider.userId,
+          "Delivery ready 🛵",
+          "Laundry is ready at the shop — time to deliver it.",
+          { type: "DELIVERY_ASSIGNED", orderId },
+        );
+        notifyUserAsync(
+          order.customerId,
+          "Out for delivery 🚚",
+          "Your laundry is on its way back to you.",
+          { type: "ORDER_OUT_FOR_DELIVERY", orderId },
+        );
+        return rider.id;
+      }
     }
 
     return null; // all candidates raced away — order stays READY

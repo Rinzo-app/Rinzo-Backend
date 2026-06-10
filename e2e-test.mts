@@ -140,6 +140,7 @@ async function cleanupDb(): Promise<void> {
   }
   await db.delete(schema.addresses).where(inArray(schema.addresses.customerId, userIds));
   await db.delete(schema.favorites).where(inArray(schema.favorites.customerId, userIds));
+  await db.delete(schema.pushTokens).where(inArray(schema.pushTokens.userId, userIds));
   await db.delete(schema.adminEvents).where(inArray(schema.adminEvents.targetId, userIds));
   await db.delete(schema.disputes).where(inArray(schema.disputes.raisedById, userIds));
   await db.delete(schema.users).where(inArray(schema.users.id, userIds));
@@ -248,6 +249,15 @@ let ownerUserId: string;
   assert(status === 200, `approve owner → ${status}: ${JSON.stringify(body)}`);
   const { body: settings } = await api("GET", "/api/shop/settings", ownerToken);
   assert(settings.status === "APPROVED", `shop should be APPROVED, got ${settings.status}`);
+}
+
+log("Owner registers a push token");
+{
+  const { status, body } = await api("POST", "/api/notifications/token", ownerToken, {
+    token: `ExponentPushToken[e2e-${Date.now()}]`,
+    platform: "android",
+  });
+  assert(status === 200 && body.ok === true, `token registration → ${status}: ${JSON.stringify(body)}`);
 }
 
 log("Owner adds a service");

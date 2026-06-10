@@ -78,6 +78,13 @@
       "when": 1738972800010,
       "tag": "0010_add_idempotency_key",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1738972800011,
+      "tag": "0011_add_push_tokens",
+      "breakpoints": true
     }
   ]
 }

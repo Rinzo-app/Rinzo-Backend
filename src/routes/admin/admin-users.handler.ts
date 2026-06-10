@@ -16,6 +16,7 @@ import {
   NotFoundError,
 } from "../../lib/errors.js";
 import { parseUUID } from "../../lib/validate-uuid.js";
+import { notifyUserAsync } from "../../lib/push.js";
 
 // ── Valid user‑level status transitions ──────────────────
 const ALLOWED_TRANSITIONS: Record<string, string[]> = {
@@ -159,6 +160,15 @@ export async function approveUser(
       return [row];
     });
 
+    notifyUserAsync(
+      targetId,
+      updated.role === "SHOP_OWNER" ? "Your shop is live! 🎉" : "You're approved! 🎉",
+      updated.role === "SHOP_OWNER"
+        ? "Rinzo approved your shop — customers can now find you and place orders."
+        : "Rinzo approved your account — you can start delivering now.",
+      { type: "ACCOUNT_APPROVED" },
+    );
+
     res.json(updated);
   } catch (err) {
     next(err);
@@ -271,7 +281,7 @@ export async function suspendUser(
                 eq(orders.status, "PLACED"),
               ),
             )
-            .returning({ id: orders.id });
+            .returning({ id: orders.id, customerId: orders.customerId });
 
           cancelledPlacedOrders = cancelled.length;
 
@@ -284,6 +294,16 @@ export async function suspendUser(
                 actor: "ADMIN",
                 actorId: req.user.id,
               })),
+            );
+          }
+
+          // Tell affected customers their order won't be fulfilled
+          for (const o of cancelled) {
+            notifyUserAsync(
+              o.customerId,
+              "Order cancelled",
+              "The shop is temporarily unavailable, so your order was cancelled. Please order from another shop.",
+              { type: "ORDER_CANCELLED", orderId: o.id },
             );
           }
         }
@@ -299,6 +319,13 @@ export async function suspendUser(
 
       return { ...row, cancelledPlacedOrders };
     });
+
+    notifyUserAsync(
+      targetId,
+      "Account suspended",
+      "Your Rinzo account has been suspended. Contact support for details.",
+      { type: "ACCOUNT_SUSPENDED" },
+    );
 
     res.json(result);
   } catch (err) {

@@ -10,6 +10,7 @@ import { shopsRouter } from "./shops/index.js";
 import { disputesRouter } from "./disputes/index.js";
 import { addressesRouter } from "./addresses/index.js";
 import { favoritesRouter } from "./favorites/index.js";
+import { notificationsRouter } from "./notifications/index.js";
 
 const apiRouter = Router();
 
@@ -33,5 +34,6 @@ apiRouter.use("/shops", shopsRouter);
 apiRouter.use("/disputes", disputesRouter);
 apiRouter.use("/addresses", addressesRouter);
 apiRouter.use("/favorites", favoritesRouter);
+apiRouter.use("/notifications", notificationsRouter);
 
 export { apiRouter };

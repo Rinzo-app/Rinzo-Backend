@@ -21,6 +21,7 @@ import { assertTransition } from "../../lib/order-machine.js";
 import { resolveRiderLegDistanceKm } from "../../lib/rider-distance.js";
 import { RIDER_PAYOUT_PER_KM } from "../../config/rider-payout.js";
 import { DELIVERY_RATE_PER_KM } from "../../config/delivery.js";
+import { notifyUserAsync } from "../../lib/push.js";
 
 const availabilitySchema = z.object({
   isAvailable: z.boolean(),
@@ -279,6 +280,13 @@ export async function pickupOrder(
       return row;
     });
 
+    notifyUserAsync(
+      order.customerId,
+      "Clothes picked up 👕",
+      "Your rider has collected your laundry and is heading to the shop.",
+      { type: "ORDER_PICKED_UP", orderId },
+    );
+
     res.status(200).json(updated);
   } catch (err) {
     next(err);
@@ -405,6 +413,13 @@ export async function deliverOrder(
 
       return row;
     });
+
+    notifyUserAsync(
+      order.customerId,
+      "Delivered 🎉",
+      "Your fresh laundry has been delivered. Thanks for using Rinzo!",
+      { type: "ORDER_DELIVERED", orderId },
+    );
 
     res.status(200).json(updated);
   } catch (err) {
