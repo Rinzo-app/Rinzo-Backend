@@ -8,6 +8,7 @@ import {
   approveUser,
   rejectUser,
   suspendUser,
+  getUserImpact,
 } from "./admin-users.handler.js";
 import { listAllOrders } from "../orders/orders.read.js";
 
@@ -62,6 +63,13 @@ adminRouter.post(
   requireAuth,
   requireRole("ADMIN"),
   authed(suspendUser),
+);
+
+adminRouter.get(
+  "/users/:id/impact",
+  requireAuth,
+  requireRole("ADMIN"),
+  authed(getUserImpact),
 );
 
 // ── Payment management ───────────────────────────────────

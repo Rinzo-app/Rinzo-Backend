@@ -1,11 +1,14 @@
 import type { Response, NextFunction } from "express";
-import { eq, and, sql, SQL } from "drizzle-orm";
+import { eq, and, inArray, sql, SQL } from "drizzle-orm";
 import { db } from "../../db/client.js";
 import { paginationSchema, paginate, paginatedResponse } from "../../lib/pagination.js";
 import { users } from "../../db/schema/users.js";
 import { riders } from "../../db/schema/riders.js";
 import { shops } from "../../db/schema/shops.js";
+import { orders } from "../../db/schema/orders.js";
+import { orderEvents } from "../../db/schema/order-events.js";
 import { adminEvents } from "../../db/schema/admin-events.js";
+import type { OrderStatus } from "../../lib/order-machine.js";
 import type { AuthenticatedRequest } from "../../lib/types.js";
 import {
   BadRequestError,
@@ -216,6 +219,11 @@ export async function rejectUser(
 
 // ─────────────────────────────────────────────────────────
 // POST /api/admin/users/:id/suspend
+//
+// Suspending a SHOP_OWNER also auto-cancels their shop's
+// PLACED orders (nothing physical has happened yet — no
+// pickup, no cash). Orders already in motion are left for
+// the admin to resolve with the existing override tools.
 // ─────────────────────────────────────────────────────────
 export async function suspendUser(
   req: AuthenticatedRequest,
@@ -229,7 +237,7 @@ export async function suspendUser(
     const user = await loadUser(targetId);
     assertTransition(user.status, "SUSPENDED");
 
-    const [updated] = await db.transaction(async (tx) => {
+    const result = await db.transaction(async (tx) => {
       const [row] = await tx
         .update(users)
         .set({ status: "SUSPENDED" })
@@ -244,18 +252,145 @@ export async function suspendUser(
 
       await syncRelatedStatus(tx, row.role, row.id, "SUSPENDED");
 
+      // ── Auto-cancel PLACED orders for a suspended shop owner ──
+      let cancelledPlacedOrders = 0;
+      if (row.role === "SHOP_OWNER") {
+        const ownedShops = await tx
+          .select({ id: shops.id })
+          .from(shops)
+          .where(eq(shops.ownerId, targetId));
+        const shopIds = ownedShops.map((s) => s.id);
+
+        if (shopIds.length > 0) {
+          const cancelled = await tx
+            .update(orders)
+            .set({ status: "CANCELLED", updatedAt: new Date() })
+            .where(
+              and(
+                inArray(orders.shopId, shopIds),
+                eq(orders.status, "PLACED"),
+              ),
+            )
+            .returning({ id: orders.id });
+
+          cancelledPlacedOrders = cancelled.length;
+
+          if (cancelled.length > 0) {
+            await tx.insert(orderEvents).values(
+              cancelled.map((o) => ({
+                orderId: o.id,
+                fromStatus: "PLACED" as OrderStatus,
+                toStatus: "CANCELLED" as OrderStatus,
+                actor: "ADMIN",
+                actorId: req.user.id,
+              })),
+            );
+          }
+        }
+      }
+
       await tx.insert(adminEvents).values({
         adminId: req.user.id,
         action: "SUSPEND_USER",
         targetType: "USER",
         targetId,
-        details: { previousStatus: user.status, role: row.role },
+        details: { previousStatus: user.status, role: row.role, cancelledPlacedOrders },
       });
 
-      return [row];
+      return { ...row, cancelledPlacedOrders };
     });
 
-    res.json(updated);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─────────────────────────────────────────────────────────
+// GET /api/admin/users/:id/impact
+//
+// What would suspending this user affect right now?
+// Returns active (non-terminal) order counts so the Admin
+// UI can warn before suspension.
+// ─────────────────────────────────────────────────────────
+
+const ACTIVE_ORDER_STATUSES: OrderStatus[] = [
+  "PLACED",
+  "SHOP_ACCEPTED",
+  "PICKUP_ASSIGNED",
+  "PICKED_UP_FROM_CUSTOMER",
+  "AT_SHOP",
+  "READY",
+  "OUT_FOR_DELIVERY",
+];
+
+export async function getUserImpact(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const targetId = parseUUID(req.params.id as string, "user ID");
+    const user = await loadUser(targetId);
+
+    let rows: { status: string }[] = [];
+
+    if (user.role === "SHOP_OWNER") {
+      const ownedShops = await db
+        .select({ id: shops.id })
+        .from(shops)
+        .where(eq(shops.ownerId, targetId));
+      const shopIds = ownedShops.map((s) => s.id);
+      if (shopIds.length > 0) {
+        rows = await db
+          .select({ status: orders.status })
+          .from(orders)
+          .where(
+            and(
+              inArray(orders.shopId, shopIds),
+              inArray(orders.status, ACTIVE_ORDER_STATUSES),
+            ),
+          );
+      }
+    } else if (user.role === "RIDER") {
+      const [rider] = await db
+        .select({ id: riders.id })
+        .from(riders)
+        .where(eq(riders.userId, targetId))
+        .limit(1);
+      if (rider) {
+        rows = await db
+          .select({ status: orders.status })
+          .from(orders)
+          .where(
+            and(
+              eq(orders.riderId, rider.id),
+              inArray(orders.status, ACTIVE_ORDER_STATUSES),
+            ),
+          );
+      }
+    } else {
+      rows = await db
+        .select({ status: orders.status })
+        .from(orders)
+        .where(
+          and(
+            eq(orders.customerId, targetId),
+            inArray(orders.status, ACTIVE_ORDER_STATUSES),
+          ),
+        );
+    }
+
+    const byStatus: Record<string, number> = {};
+    for (const r of rows) byStatus[r.status] = (byStatus[r.status] ?? 0) + 1;
+
+    res.json({
+      role: user.role,
+      totalActiveOrders: rows.length,
+      byStatus,
+      // PLACED orders are auto-cancelled when a shop owner is suspended
+      placedWillBeCancelled: user.role === "SHOP_OWNER" ? (byStatus["PLACED"] ?? 0) : 0,
+    });
   } catch (err) {
     next(err);
   }

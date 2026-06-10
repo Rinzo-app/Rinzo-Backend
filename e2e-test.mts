@@ -230,6 +230,7 @@ log("Negative: customer must NOT see unapproved shop");
 }
 
 log("Admin approves shop owner → user ACTIVE, shop APPROVED");
+let ownerUserId: string;
 {
   const { body: pending } = await api(
     "GET",
@@ -238,6 +239,7 @@ log("Admin approves shop owner → user ACTIVE, shop APPROVED");
   );
   const ownerRow = (pending.data ?? []).find((u: any) => u.email === EMAILS.owner);
   assert(ownerRow, "owner not found in admin PENDING list");
+  ownerUserId = ownerRow.id;
   const { status, body } = await api(
     "POST",
     `/api/admin/users/${ownerRow.id}/approve`,
@@ -423,6 +425,79 @@ log("Verify final order, full event trail, and rider earnings");
 
   const { body: earnings } = await api("GET", "/api/rider/earnings", riderToken);
   console.log(`     rider earnings: ${JSON.stringify(earnings).slice(0, 200)}`);
+}
+
+// ── Suspension semantics ──────────────────────────────────
+log("Suspension: customer places a second order (stays PLACED)");
+let order2Id: string;
+{
+  const { status, body } = await api("POST", "/api/orders", customerToken, {
+    shopId,
+    items: [{ serviceId, quantity: 1 }],
+    pickupAddress: "12 Customer Lane, Bengaluru",
+    deliveryAddress: "12 Customer Lane, Bengaluru",
+    pickupLat: 12.97,
+    pickupLng: 77.593,
+  });
+  assert(status === 201, `second order → ${status}: ${JSON.stringify(body)}`);
+  order2Id = body.order.id;
+}
+
+log("Impact endpoint reports the PLACED order before suspension");
+{
+  const { status, body } = await api(
+    "GET",
+    `/api/admin/users/${ownerUserId}/impact`,
+    adminToken,
+  );
+  assert(status === 200, `impact → ${status}: ${JSON.stringify(body)}`);
+  assert(body.totalActiveOrders === 1, `expected 1 active order, got ${body.totalActiveOrders}`);
+  assert(body.placedWillBeCancelled === 1, `expected 1 cancellable, got ${body.placedWillBeCancelled}`);
+}
+
+log("Suspend owner → PLACED order auto-cancelled, shop hidden, owner blocked");
+{
+  const { status, body } = await api(
+    "POST",
+    `/api/admin/users/${ownerUserId}/suspend`,
+    adminToken,
+  );
+  assert(status === 200, `suspend → ${status}: ${JSON.stringify(body)}`);
+  assert(
+    body.cancelledPlacedOrders === 1,
+    `expected cancelledPlacedOrders=1, got ${body.cancelledPlacedOrders}`,
+  );
+
+  const { body: order2 } = await api("GET", `/api/orders/${order2Id}`, adminToken);
+  assert(order2.status === "CANCELLED", `order2 should be CANCELLED, got ${order2.status}`);
+
+  const { body: list } = await api("GET", "/api/shops?limit=100", customerToken);
+  assert(
+    !(list.data ?? []).some((s: any) => s.id === shopId),
+    "suspended shop still visible to customers",
+  );
+
+  const { status: ownerStatus, body: ownerBody } = await api(
+    "GET",
+    "/api/shop/settings",
+    ownerToken,
+  );
+  assert(
+    ownerStatus === 403 && ownerBody.code === "ERR_SUSPENDED",
+    `owner should be blocked with ERR_SUSPENDED, got ${ownerStatus}: ${JSON.stringify(ownerBody)}`,
+  );
+}
+
+log("Reinstate owner → shop APPROVED and visible again");
+{
+  const { status } = await api(
+    "POST",
+    `/api/admin/users/${ownerUserId}/approve`,
+    adminToken,
+  );
+  assert(status === 200, `reinstate → ${status}`);
+  const { body: settings } = await api("GET", "/api/shop/settings", ownerToken);
+  assert(settings.status === "APPROVED", `shop should be APPROVED again, got ${settings.status}`);
 }
 
 log("Cleanup: remove all test data (db + firebase)");
