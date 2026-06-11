@@ -2,7 +2,14 @@ import { z } from "zod";
 
 export const paginationSchema = z.object({
   page: z.coerce.number().int().positive().default(1),
-  limit: z.coerce.number().int().positive().max(100).default(20),
+  // Clamp oversized limits instead of rejecting the request — a 400
+  // here silently blanks entire list screens in the apps.
+  limit: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(20)
+    .transform((v) => Math.min(v, 100)),
 });
 
 export function paginate(page: number, limit: number) {

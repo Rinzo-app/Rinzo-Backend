@@ -23,9 +23,19 @@ async function resolveOwnerShop(ownerId: string) {
 
 // ── Zod schema for settings update ───────────────────────
 
+// Indian mobile: optional +91 / 0 prefix, then 10 digits starting 6-9
+const phoneField = z
+  .string()
+  .transform((v) => v.replace(/[\s-]/g, ""))
+  .pipe(
+    z
+      .string()
+      .regex(/^(\+91|0)?[6-9]\d{9}$/, "Enter a valid 10-digit mobile number"),
+  );
+
 const updateSettingsBody = z.object({
   name: z.string().min(1).max(100).optional(),
-  phone: z.string().min(4).max(20).optional(),
+  phone: phoneField.optional(),
   address: z.string().min(1).max(500).optional(),
   isOpen: z.boolean().optional(),
   dailyCapacity: z.number().int().positive().optional(),
@@ -36,7 +46,7 @@ const updateSettingsBody = z.object({
 
 const createShopBody = z.object({
   name: z.string().min(1).max(200),
-  phone: z.string().min(4).max(20),
+  phone: phoneField,
   address: z.string().min(1).max(500),
   latitude: z.number().min(-90).max(90),
   longitude: z.number().min(-180).max(180),

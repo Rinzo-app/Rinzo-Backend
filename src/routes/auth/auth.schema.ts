@@ -2,7 +2,16 @@ import { z } from "zod";
 
 // ── Shared fields ────────────────────────────────────────
 const nameField = z.string().min(1).max(150);
-const phoneField = z.string().min(4).max(20);
+// Indian mobile: optional +91 / 0 prefix, then 10 digits starting 6-9.
+// Spaces and dashes are stripped before validation.
+const phoneField = z
+  .string()
+  .transform((v) => v.replace(/[\s-]/g, ""))
+  .pipe(
+    z
+      .string()
+      .regex(/^(\+91|0)?[6-9]\d{9}$/, "Enter a valid 10-digit mobile number"),
+  );
 const emailField = z.string().email().max(255).optional();
 
 // ── POST /api/auth/register/customer ─────────────────────
