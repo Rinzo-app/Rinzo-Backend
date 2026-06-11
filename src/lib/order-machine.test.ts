@@ -12,6 +12,7 @@ import { ConflictError, ForbiddenError } from "./errors.js";
 const ALL_STATUSES: OrderStatus[] = [
   "PLACED",
   "SHOP_ACCEPTED",
+  "PICKUP_OFFERED",
   "PICKUP_ASSIGNED",
   "PICKED_UP_FROM_CUSTOMER",
   "AT_SHOP",
@@ -35,7 +36,10 @@ const LEGAL: Array<[OrderStatus, OrderStatus, TransitionActor[]]> = [
   ["PLACED", "SHOP_ACCEPTED", ["SHOP_OWNER"]],
   ["PLACED", "REJECTED_BY_SHOP", ["SHOP_OWNER", "SYSTEM"]],
   ["PLACED", "CANCELLED", ["CUSTOMER"]],
+  ["SHOP_ACCEPTED", "PICKUP_OFFERED", ["SYSTEM"]],
   ["SHOP_ACCEPTED", "PICKUP_ASSIGNED", ["SYSTEM"]],
+  ["PICKUP_OFFERED", "PICKUP_ASSIGNED", ["RIDER"]],
+  ["PICKUP_OFFERED", "SHOP_ACCEPTED", ["RIDER", "SYSTEM"]],
   ["PICKUP_ASSIGNED", "PICKED_UP_FROM_CUSTOMER", ["RIDER"]],
   ["PICKED_UP_FROM_CUSTOMER", "AT_SHOP", ["RIDER"]],
   ["AT_SHOP", "READY", ["SHOP_OWNER"]],
@@ -78,6 +82,8 @@ describe("assertTransition — illegal edges are conflicts (409)", () => {
     ["AT_SHOP", "OUT_FOR_DELIVERY"],         // must pass READY
     ["READY", "DELIVERED"],                  // must pass OUT_FOR_DELIVERY
     ["OUT_FOR_DELIVERY", "AT_SHOP"],         // no going backwards
+    ["PICKUP_OFFERED", "PICKED_UP_FROM_CUSTOMER"], // must accept first
+    ["PICKUP_ASSIGNED", "SHOP_ACCEPTED"],    // accepted offers don't go back
   ];
 
   for (const [from, to] of ILLEGAL) {
@@ -128,6 +134,15 @@ describe("getAllowedTransitions", () => {
     assert.deepEqual(getAllowedTransitions("PLACED", "CUSTOMER"), ["CANCELLED"]);
     assert.deepEqual(getAllowedTransitions("PLACED", "RIDER"), []);
     assert.deepEqual(getAllowedTransitions("READY", "SYSTEM"), ["OUT_FOR_DELIVERY"]);
+    assert.deepEqual(getAllowedTransitions("SHOP_ACCEPTED", "SYSTEM").sort(), [
+      "PICKUP_ASSIGNED",
+      "PICKUP_OFFERED",
+    ]);
+    assert.deepEqual(getAllowedTransitions("PICKUP_OFFERED", "RIDER").sort(), [
+      "PICKUP_ASSIGNED",
+      "SHOP_ACCEPTED",
+    ]);
+    assert.deepEqual(getAllowedTransitions("PICKUP_OFFERED", "SYSTEM"), ["SHOP_ACCEPTED"]);
   });
 
   test("admin sees every defined edge from a status", () => {

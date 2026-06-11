@@ -27,6 +27,7 @@ import { notifyUserAsync } from "../../lib/push.js";
 const ACTIVE_STATUSES: OrderStatus[] = [
   "PLACED",
   "SHOP_ACCEPTED",
+  "PICKUP_OFFERED",
   "PICKUP_ASSIGNED",
   "PICKED_UP_FROM_CUSTOMER",
   "AT_SHOP",

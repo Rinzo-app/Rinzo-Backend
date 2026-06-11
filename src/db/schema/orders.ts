@@ -28,6 +28,12 @@ export const orders = pgTable("orders", {
   // Scheduling fields (nullable — customer may not have selected)
   pickupDate: varchar("pickup_date", { length: 20 }),
   pickupSlot: varchar("pickup_slot", { length: 50 }),
+  // ── Pickup offer flow ──────────────────────────────────
+  // While status is PICKUP_OFFERED, riderId holds the offered rider
+  // and offerExpiresAt the deadline; declined riders are excluded
+  // from re-offers.
+  offerExpiresAt: timestamp("offer_expires_at"),
+  declinedRiderIds: jsonb("declined_rider_ids").notNull().default([]),
   // Client-generated key to dedupe double-submissions (nullable;
   // Postgres unique indexes permit multiple NULLs)
   idempotencyKey: varchar("idempotency_key", { length: 64 }).unique(),

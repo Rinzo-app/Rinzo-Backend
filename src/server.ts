@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { assertProductionEnv } from "./lib/assert-env.js";
 import { app } from "./app.js";
+import { startOfferSweeper } from "./lib/offer-sweeper.js";
 
 // ── Fail fast if critical secrets are missing ────────────
 assertProductionEnv();
@@ -27,3 +28,6 @@ app.listen(PORT, () => {
   console.log(`[rinzo-backend] listening on http://localhost:${PORT}`);
   console.log(`[rinzo-backend] env: ${nodeEnv}`);
 });
+
+// Expire stale pickup offers + retry pool orders
+startOfferSweeper();

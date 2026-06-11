@@ -9,13 +9,18 @@ import { assertTransition } from "./order-machine.js";
 import { haversineDistance } from "./geo.js";
 import { notifyUserAsync } from "./push.js";
 
-// A rider is "busy" while physically carrying out a leg.
+// A rider is "busy" while physically carrying out a leg, or while
+// holding a pending offer (one offer at a time per rider).
 // (AT_SHOP / READY keep the order's riderId but the rider is free.)
 const RIDER_BUSY_STATUSES: OrderStatus[] = [
+  "PICKUP_OFFERED",
   "PICKUP_ASSIGNED",
   "PICKED_UP_FROM_CUSTOMER",
   "OUT_FOR_DELIVERY",
 ];
+
+/** How long a rider has to accept a pickup offer. */
+export const OFFER_WINDOW_MS = 60_000;
 
 /** True when the rider has an active leg on some OTHER order. */
 async function riderIsBusy(
@@ -74,9 +79,10 @@ async function findAvailableRiders(
   targetLat?: number | null,
   targetLng?: number | null,
   limit = 3,
+  excludeRiderIds: readonly string[] = [],
 ): Promise<Array<{ id: string; userId: string }>> {
   // ── Fetch ACTIVE + available riders with no busy leg ──
-  const available = await db
+  const fetched = await db
     .select({
       id: riders.id,
       userId: riders.userId,
@@ -103,6 +109,9 @@ async function findAvailableRiders(
       ),
     )
     .orderBy(asc(riders.id)); // stable base order
+
+  const excluded = new Set(excludeRiderIds);
+  const available = fetched.filter((r) => !excluded.has(r.id));
 
   if (available.length === 0) return [];
 
@@ -156,14 +165,17 @@ async function findAvailableRiders(
 }
 
 /**
- * Try to auto-assign a rider for **pickup** after an order
- * transitions to SHOP_ACCEPTED.
+ * Offer the pickup to the best available rider after an order
+ * transitions to SHOP_ACCEPTED (or returns there after a decline /
+ * expiry). The rider must accept within OFFER_WINDOW_MS or the offer
+ * cascades to the next candidate.
+ *
+ * Riders listed in the order's declinedRiderIds are skipped.
  *
  * Must be called *outside* the caller's transaction so we can
- * run our own atomic block.  The order must already be in
- * SHOP_ACCEPTED status (committed).
+ * run our own atomic block.
  *
- * @returns The assigned rider id, or null if none available.
+ * @returns The offered rider id, or null if none available.
  */
 export async function tryAutoAssignPickup(
   orderId: string,
@@ -176,6 +188,7 @@ export async function tryAutoAssignPickup(
       status: orders.status,
       shopId: orders.shopId,
       customerId: orders.customerId,
+      declinedRiderIds: orders.declinedRiderIds,
     })
     .from(orders)
     .where(eq(orders.id, orderId))
@@ -204,17 +217,20 @@ export async function tryAutoAssignPickup(
     shopLng = shop.longitude;
   }
 
-  const candidates = await findAvailableRiders(shopLat, shopLng);
+  const declined = Array.isArray(order.declinedRiderIds)
+    ? (order.declinedRiderIds as string[])
+    : [];
+  const candidates = await findAvailableRiders(shopLat, shopLng, 3, declined);
   if (candidates.length === 0) return null;
 
   try {
     // Validate the SYSTEM transition
-    assertTransition("SHOP_ACCEPTED", "PICKUP_ASSIGNED", "SYSTEM");
+    assertTransition("SHOP_ACCEPTED", "PICKUP_OFFERED", "SYSTEM");
 
     // Try candidates in rank order — a concurrent assignment may have
     // grabbed the best rider between our query and the transaction.
     for (const rider of candidates) {
-      const assigned = await db.transaction(async (tx) => {
+      const offered = await db.transaction(async (tx) => {
         // Lock the rider row to serialise competing assignments
         await tx.execute(
           sql`SELECT id FROM riders WHERE id = ${rider.id} FOR UPDATE`,
@@ -238,8 +254,9 @@ export async function tryAutoAssignPickup(
         await tx
           .update(orders)
           .set({
-            status: "PICKUP_ASSIGNED",
+            status: "PICKUP_OFFERED",
             riderId: rider.id,
+            offerExpiresAt: new Date(Date.now() + OFFER_WINDOW_MS),
             updatedAt: new Date(),
           })
           .where(eq(orders.id, orderId));
@@ -247,7 +264,7 @@ export async function tryAutoAssignPickup(
         await tx.insert(orderEvents).values({
           orderId,
           fromStatus: "SHOP_ACCEPTED" as OrderStatus,
-          toStatus: "PICKUP_ASSIGNED" as OrderStatus,
+          toStatus: "PICKUP_OFFERED" as OrderStatus,
           actor: "SYSTEM",
           actorId: rider.userId,
         });
@@ -255,12 +272,12 @@ export async function tryAutoAssignPickup(
         return true;
       });
 
-      if (assigned) {
+      if (offered) {
         notifyUserAsync(
           rider.userId,
-          "New pickup 🛵",
-          "You've been assigned a laundry pickup. Open the app for details.",
-          { type: "PICKUP_ASSIGNED", orderId },
+          "New pickup offer 🛵",
+          "A laundry pickup is waiting — accept it in the app within 60 seconds.",
+          { type: "PICKUP_OFFERED", orderId },
         );
         return rider.id;
       }
@@ -271,6 +288,79 @@ export async function tryAutoAssignPickup(
     // Non-fatal — order stays SHOP_ACCEPTED for manual assignment
     logAutoAssignError("PICKUP", orderId, err);
     return null;
+  }
+}
+
+/**
+ * Return an offered order to the pool (rider declined, or the offer
+ * expired), recording the rider so they aren't re-offered, then
+ * immediately try the next candidate.
+ *
+ * @param actor "RIDER" for an explicit decline, "SYSTEM" for expiry.
+ * @returns true when the offer was released (regardless of re-offer).
+ */
+export async function releasePickupOffer(
+  orderId: string,
+  riderId: string,
+  riderUserId: string,
+  actor: "RIDER" | "SYSTEM",
+): Promise<boolean> {
+  try {
+    assertTransition("PICKUP_OFFERED", "SHOP_ACCEPTED", actor);
+
+    const released = await db.transaction(async (tx) => {
+      const [fresh] = await tx
+        .select({
+          status: orders.status,
+          riderId: orders.riderId,
+          declinedRiderIds: orders.declinedRiderIds,
+        })
+        .from(orders)
+        .where(eq(orders.id, orderId))
+        .for("update")
+        .limit(1);
+
+      if (!fresh || fresh.status !== "PICKUP_OFFERED" || fresh.riderId !== riderId) {
+        return false; // offer already resolved
+      }
+
+      const declined = Array.isArray(fresh.declinedRiderIds)
+        ? (fresh.declinedRiderIds as string[])
+        : [];
+      if (!declined.includes(riderId)) declined.push(riderId);
+
+      await tx
+        .update(orders)
+        .set({
+          status: "SHOP_ACCEPTED",
+          riderId: null,
+          offerExpiresAt: null,
+          declinedRiderIds: declined,
+          updatedAt: new Date(),
+        })
+        .where(eq(orders.id, orderId));
+
+      await tx.insert(orderEvents).values({
+        orderId,
+        fromStatus: "PICKUP_OFFERED" as OrderStatus,
+        toStatus: "SHOP_ACCEPTED" as OrderStatus,
+        actor,
+        actorId: riderUserId,
+      });
+
+      return true;
+    });
+
+    if (released) {
+      // Cascade to the next candidate (fire-and-forget semantics —
+      // failures leave the order in the pool for the sweeper).
+      await tryAutoAssignPickup(orderId);
+    }
+
+    return released;
+  } catch (err) {
+    logAutoAssignError("OFFER_RELEASE", orderId, err);
+    return false;
   }
 }
 

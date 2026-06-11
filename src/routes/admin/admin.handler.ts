@@ -53,11 +53,14 @@ export async function assignPickup(
       throw new NotFoundError("Rider not found", "ERR_RIDER_NOT_FOUND");
     }
 
-    // ── 4. Validate transition (actor = SYSTEM) ───────────
+    // ── 4. Validate transition (actor = ADMIN) ────────────
+    // ADMIN bypass also covers force-assigning while an offer is
+    // pending (PICKUP_OFFERED) — the offered rider's accept then
+    // fails cleanly with ERR_OFFER_GONE.
     assertTransition(
       order.status as OrderStatus,
       "PICKUP_ASSIGNED",
-      "SYSTEM",
+      "ADMIN",
     );
 
     // ── 5. Update order in transaction ────────────────────
@@ -67,6 +70,7 @@ export async function assignPickup(
         .set({
           status: "PICKUP_ASSIGNED",
           riderId: rider.id,
+          offerExpiresAt: null,
           updatedAt: new Date(),
         })
         .where(and(eq(orders.id, orderId), eq(orders.status, order.status as OrderStatus)))

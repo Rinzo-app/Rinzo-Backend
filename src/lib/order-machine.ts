@@ -8,6 +8,7 @@ import { ConflictError, ForbiddenError } from "./errors.js";
 export type OrderStatus =
   | "PLACED"
   | "SHOP_ACCEPTED"
+  | "PICKUP_OFFERED"
   | "PICKUP_ASSIGNED"
   | "PICKED_UP_FROM_CUSTOMER"
   | "AT_SHOP"
@@ -44,7 +45,10 @@ const TERMINAL_STATUSES: ReadonlySet<OrderStatus> = new Set([
 //  PLACED → SHOP_ACCEPTED              SHOP_OWNER
 //  PLACED → REJECTED_BY_SHOP           SHOP_OWNER, SYSTEM (auto-reject)
 //  PLACED → CANCELLED                  CUSTOMER
-//  SHOP_ACCEPTED → PICKUP_ASSIGNED     SYSTEM (rider assignment)
+//  SHOP_ACCEPTED → PICKUP_OFFERED      SYSTEM (offer to a rider)
+//  SHOP_ACCEPTED → PICKUP_ASSIGNED     SYSTEM (admin manual assignment)
+//  PICKUP_OFFERED → PICKUP_ASSIGNED    RIDER  (rider accepts the offer)
+//  PICKUP_OFFERED → SHOP_ACCEPTED      RIDER (decline), SYSTEM (expiry)
 //  PICKUP_ASSIGNED → PICKED_UP_FROM_CUSTOMER   RIDER
 //  PICKED_UP_FROM_CUSTOMER → AT_SHOP   RIDER
 //  AT_SHOP → READY                     SHOP_OWNER
@@ -63,7 +67,10 @@ interface TransitionRule {
 const rules: readonly TransitionRule[] = [
   // ── Happy path ───────────────────────────────────────
   { from: "PLACED",                   to: "SHOP_ACCEPTED",            actors: new Set(["SHOP_OWNER"]) },
+  { from: "SHOP_ACCEPTED",            to: "PICKUP_OFFERED",           actors: new Set(["SYSTEM"]) },
   { from: "SHOP_ACCEPTED",            to: "PICKUP_ASSIGNED",          actors: new Set(["SYSTEM"]) },
+  { from: "PICKUP_OFFERED",           to: "PICKUP_ASSIGNED",          actors: new Set(["RIDER"]) },
+  { from: "PICKUP_OFFERED",           to: "SHOP_ACCEPTED",            actors: new Set(["RIDER", "SYSTEM"]) },
   { from: "PICKUP_ASSIGNED",          to: "PICKED_UP_FROM_CUSTOMER",  actors: new Set(["RIDER"]) },
   { from: "PICKED_UP_FROM_CUSTOMER",  to: "AT_SHOP",                  actors: new Set(["RIDER"]) },
   { from: "AT_SHOP",                  to: "READY",                    actors: new Set(["SHOP_OWNER"]) },

@@ -376,12 +376,22 @@ log("Replaying the same idempotency key returns the SAME order (no duplicate)");
   assert(body.order.id === orderId, `replay returned a different order: ${body.order.id}`);
 }
 
-log("Owner accepts → auto-assign should move it to PICKUP_ASSIGNED");
+log("Owner accepts → system should OFFER the pickup to the rider");
 {
   const { status, body } = await api("POST", `/api/orders/${orderId}/accept`, ownerToken);
   assert(status === 200, `accept → ${status}: ${JSON.stringify(body)}`);
+  const order = await waitForStatus(orderId, ownerToken, "PICKUP_OFFERED");
+  assert(order.riderId, "riderId not set on the offer");
+  assert(order.offerExpiresAt, "offerExpiresAt not set on the offer");
+}
+
+log("Rider accepts the offer → PICKUP_ASSIGNED");
+{
+  const { status, body } = await api("POST", `/api/rider/orders/${orderId}/accept`, riderToken);
+  assert(status === 200, `offer accept → ${status}: ${JSON.stringify(body)}`);
   const order = await waitForStatus(orderId, ownerToken, "PICKUP_ASSIGNED");
-  assert(order.riderId, "riderId not set after auto-assign");
+  assert(order.riderId, "riderId not kept after accept");
+  assert(!order.offerExpiresAt, "offerExpiresAt should clear on accept");
 }
 
 log("Negative: customer cannot cancel after acceptance (409)");
@@ -438,7 +448,8 @@ log("Verify final order, full event trail, and rider earnings");
   const expected = [
     "PLACED",
     "SHOP_ACCEPTED",
-    "PICKUP_ASSIGNED",
+    "PICKUP_OFFERED",      // system offered to the rider
+    "PICKUP_ASSIGNED",     // rider accepted the offer
     "PICKED_UP_FROM_CUSTOMER",
     "AT_SHOP",
     "READY",
@@ -452,6 +463,47 @@ log("Verify final order, full event trail, and rider earnings");
 
   const { body: earnings } = await api("GET", "/api/rider/earnings", riderToken);
   console.log(`     rider earnings: ${JSON.stringify(earnings).slice(0, 200)}`);
+}
+
+// ── Offer decline path ────────────────────────────────────
+log("Decline path: new order → offer → rider declines → pool, then admin force-assigns");
+let declineOrderId: string;
+{
+  const { status, body } = await api("POST", "/api/orders", customerToken, {
+    shopId,
+    items: [{ serviceId, quantity: 1 }],
+    pickupAddress: "12 Customer Lane, Bengaluru",
+    deliveryAddress: "12 Customer Lane, Bengaluru",
+    pickupLat: 12.97,
+    pickupLng: 77.593,
+  });
+  assert(status === 201, `decline-test order → ${status}: ${JSON.stringify(body)}`);
+  declineOrderId = body.order.id;
+
+  const accept = await api("POST", `/api/orders/${declineOrderId}/accept`, ownerToken);
+  assert(accept.status === 200, `accept → ${accept.status}`);
+  await waitForStatus(declineOrderId, ownerToken, "PICKUP_OFFERED");
+
+  const decline = await api("POST", `/api/rider/orders/${declineOrderId}/decline`, riderToken);
+  assert(decline.status === 200, `decline → ${decline.status}`);
+
+  // Only one rider exists and they declined — order returns to the
+  // pool with no rider and the decliner excluded from re-offers.
+  const { body: order } = await api("GET", `/api/orders/${declineOrderId}`, adminToken);
+  assert(order.status === "SHOP_ACCEPTED", `after decline status ${order.status}`);
+  assert(!order.riderId, "riderId should clear after decline");
+
+  // Admin can still force-assign past the offer system.
+  const { body: riderProfile } = await api("GET", "/api/rider/profile", riderToken);
+  const manual = await api(
+    "POST",
+    `/api/admin/orders/${declineOrderId}/assign-pickup`,
+    adminToken,
+    { riderId: riderProfile.riderId },
+  );
+  assert(manual.status === 200, `manual assign → ${manual.status}: ${JSON.stringify(manual.body)}`);
+  const assigned = await waitForStatus(declineOrderId, ownerToken, "PICKUP_ASSIGNED");
+  assert(assigned.riderId, "riderId not set after manual assign");
 }
 
 // ── Suspension semantics ──────────────────────────────────
@@ -481,7 +533,9 @@ log("Impact endpoint reports the PLACED order before suspension");
     adminToken,
   );
   assert(status === 200, `impact → ${status}: ${JSON.stringify(body)}`);
-  assert(body.totalActiveOrders === 1, `expected 1 active order, got ${body.totalActiveOrders}`);
+  // Two active: the PLACED suspension-test order + the in-motion
+  // decline-test order (PICKUP_ASSIGNED). Only PLACED is cancellable.
+  assert(body.totalActiveOrders === 2, `expected 2 active orders, got ${body.totalActiveOrders}`);
   assert(body.placedWillBeCancelled === 1, `expected 1 cancellable, got ${body.placedWillBeCancelled}`);
 }
 
