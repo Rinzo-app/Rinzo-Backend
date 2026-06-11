@@ -96,6 +96,29 @@ export async function listUsers(
       ? await db.select(userColumns).from(users).where(whereClause).limit(limit).offset(offset)
       : await db.select(userColumns).from(users).limit(limit).offset(offset);
 
+    // For rider listings, enrich with vehicle details so the Admin
+    // panel can show them (left join semantics via second query).
+    if (roleParam === "RIDER" && rows.length > 0) {
+      const riderRows = await db
+        .select({
+          userId: riders.userId,
+          vehicleType: riders.vehicleType,
+          vehicleNumber: riders.vehicleNumber,
+          licenseNumber: riders.licenseNumber,
+        })
+        .from(riders)
+        .where(inArray(riders.userId, rows.map((r) => r.id)));
+      const byUser = new Map(riderRows.map((r) => [r.userId, r]));
+      const enriched = rows.map((r) => ({
+        ...r,
+        vehicleType: byUser.get(r.id)?.vehicleType ?? null,
+        vehicleNumber: byUser.get(r.id)?.vehicleNumber || null,
+        licenseNumber: byUser.get(r.id)?.licenseNumber || null,
+      }));
+      res.json(paginatedResponse(enriched, total, page, limit));
+      return;
+    }
+
     res.json(paginatedResponse(rows, total, page, limit));
   } catch (err) {
     next(err);

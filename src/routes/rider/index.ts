@@ -3,7 +3,7 @@ import { requireAuth } from "../../middleware/require-auth.js";
 import { requireRole } from "../../middleware/require-role.js";
 import { requireApprovedRider } from "../../middleware/require-approved-rider.js";
 import { authed } from "../../lib/typed-handler.js";
-import { getRiderProfile, toggleAvailability, updateLocation, pickupOrder, dropoffOrder, deliverOrder } from "./rider.handler.js";
+import { getRiderProfile, updateRiderProfile, toggleAvailability, updateLocation, pickupOrder, dropoffOrder, deliverOrder } from "./rider.handler.js";
 import { getRiderEarnings } from "./rider-earnings.handler.js";
 import { listRiderOrders } from "../orders/orders.read.js";
 
@@ -16,6 +16,15 @@ riderRouter.get(
   requireAuth,
   requireRole("RIDER"),
   authed(getRiderProfile),
+);
+
+// Vehicle details edit — allowed for PENDING riders too, so they can
+// complete their profile while awaiting approval.
+riderRouter.patch(
+  "/profile",
+  requireAuth,
+  requireRole("RIDER"),
+  authed(updateRiderProfile),
 );
 
 riderRouter.get(

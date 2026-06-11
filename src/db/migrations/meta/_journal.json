@@ -85,6 +85,13 @@
       "when": 1738972800011,
       "tag": "0011_add_push_tokens",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1738972800012,
+      "tag": "0012_add_rider_license",
+      "breakpoints": true
     }
   ]
 }

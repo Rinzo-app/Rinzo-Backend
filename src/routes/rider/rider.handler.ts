@@ -43,6 +43,7 @@ export async function getRiderProfile(
         riderId: riders.id,
         vehicleType: riders.vehicleType,
         vehicleNumber: riders.vehicleNumber,
+        licenseNumber: riders.licenseNumber,
         riderStatus: riders.status,
         isAvailable: riders.isAvailable,
       })
@@ -93,9 +94,75 @@ export async function getRiderProfile(
       status: effectiveStatus,
       vehicleType: rider.vehicleType,
       vehicleNumber: rider.vehicleNumber ?? "",
+      licenseNumber: rider.licenseNumber ?? "",
       availability: rider.isAvailable ? "AVAILABLE" : "OFFLINE",
       joinedDate: user?.createdAt?.toISOString() ?? new Date().toISOString(),
       totalDeliveries: total,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─────────────────────────────────────────────────────────
+// PATCH /api/rider/profile
+// Update vehicle details (type, registration number, license).
+// ─────────────────────────────────────────────────────────
+
+const updateProfileSchema = z
+  .object({
+    vehicleType: z.enum(["Motorcycle", "Scooter", "Bicycle", "Car"]).optional(),
+    vehicleNumber: z
+      .string()
+      .trim()
+      .max(30)
+      .regex(/^[A-Za-z0-9 -]*$/, "Vehicle number can only contain letters, digits, spaces and dashes")
+      .optional(),
+    licenseNumber: z
+      .string()
+      .trim()
+      .max(30)
+      .regex(/^[A-Za-z0-9 -]*$/, "License number can only contain letters, digits, spaces and dashes")
+      .optional(),
+  })
+  .refine(
+    (b) => b.vehicleType !== undefined || b.vehicleNumber !== undefined || b.licenseNumber !== undefined,
+    { message: "Provide at least one field to update" },
+  );
+
+export async function updateRiderProfile(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const parsed = updateProfileSchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw new BadRequestError(
+        parsed.error.issues.map((i) => i.message).join("; "),
+      );
+    }
+
+    const rider = await getRiderForUser(req.user.id);
+
+    const [updated] = await db
+      .update(riders)
+      .set({
+        ...(parsed.data.vehicleType !== undefined ? { vehicleType: parsed.data.vehicleType } : {}),
+        ...(parsed.data.vehicleNumber !== undefined
+          ? { vehicleNumber: parsed.data.vehicleNumber.toUpperCase() }
+          : {}),
+        ...(parsed.data.licenseNumber !== undefined
+          ? { licenseNumber: parsed.data.licenseNumber.toUpperCase() }
+          : {}),
+      })
+      .where(eq(riders.id, rider.id))
+      .returning();
+
+    res.status(200).json({
+      vehicleType: updated.vehicleType,
+      vehicleNumber: updated.vehicleNumber,
+      licenseNumber: updated.licenseNumber,
     });
   } catch (err) {
     next(err);
