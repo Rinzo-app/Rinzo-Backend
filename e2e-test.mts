@@ -455,7 +455,7 @@ log("Verify final order, full event trail, and rider earnings");
 }
 
 // ── Suspension semantics ──────────────────────────────────
-log("Suspension: customer places a second order (stays PLACED)");
+log("Suspension: customer places a second order WITHOUT coords (stays PLACED)");
 let order2Id: string;
 {
   const { status, body } = await api("POST", "/api/orders", customerToken, {
@@ -463,11 +463,14 @@ let order2Id: string;
     items: [{ serviceId, quantity: 1 }],
     pickupAddress: "12 Customer Lane, Bengaluru",
     deliveryAddress: "12 Customer Lane, Bengaluru",
-    pickupLat: 12.97,
-    pickupLng: 77.593,
+    // no pickupLat/Lng on purpose — must charge the fallback fee
   });
   assert(status === 201, `second order → ${status}: ${JSON.stringify(body)}`);
   order2Id = body.order.id;
+  assert(
+    body.order.deliveryFee === 2000,
+    `coordinate-less order should charge fallback fee 2000, got ${body.order.deliveryFee}`,
+  );
 }
 
 log("Impact endpoint reports the PLACED order before suspension");

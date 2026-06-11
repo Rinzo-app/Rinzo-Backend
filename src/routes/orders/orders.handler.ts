@@ -7,7 +7,7 @@ import { orders, orderItems } from "../../db/schema/orders.js";
 import { orderEvents } from "../../db/schema/order-events.js";
 import { payments } from "../../db/schema/payments.js";
 import { PLATFORM_FEE } from "../../lib/economics.js";
-import { DELIVERY_RATE_PER_KM } from "../../config/delivery.js";
+import { computeDeliveryFee } from "../../lib/delivery-fee.js";
 import { haversineDistance } from "../../lib/geo.js";
 import type { AuthenticatedRequest } from "../../lib/types.js";
 import {
@@ -125,22 +125,23 @@ export async function createOrder(
     const totalAmount = itemRows.reduce((sum, r) => sum + r.lineTotal, 0);
 
     // ── 5b. Compute delivery fee ─────────────────────────
-    let deliveryFee = 0;
-    if (
+    // Coordinates missing → fallback fee, never free delivery.
+    const hasCoords =
       body.pickupLat != null &&
       body.pickupLng != null &&
       Number.isFinite(body.pickupLat) &&
-      Number.isFinite(body.pickupLng)
-    ) {
-      const distanceM = haversineDistance(
-        body.pickupLat,
-        body.pickupLng,
-        shop.latitude,
-        shop.longitude,
-      );
-      const roundTripKm = (distanceM / 1000) * 2;
-      deliveryFee = Math.round(roundTripKm * DELIVERY_RATE_PER_KM);
-    }
+      Number.isFinite(body.pickupLng);
+
+    const deliveryFee = computeDeliveryFee(
+      hasCoords
+        ? haversineDistance(
+            body.pickupLat!,
+            body.pickupLng!,
+            shop.latitude,
+            shop.longitude,
+          )
+        : null,
+    );
 
     // ── 6. Insert order + order_items in a transaction ───
     let result;
