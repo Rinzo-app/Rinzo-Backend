@@ -73,13 +73,20 @@ adminRouter.get(
 );
 
 // ── Payment management ───────────────────────────────────
-import { markPaymentCollected } from "./admin-payments.handler.js";
+import { markPaymentCollected, settlePayment } from "./admin-payments.handler.js";
 
 adminRouter.post(
   "/payments/:id/mark-collected",
   requireAuth,
   requireRole("ADMIN"),
   authed(markPaymentCollected),
+);
+
+adminRouter.post(
+  "/payments/:id/settle",
+  requireAuth,
+  requireRole("ADMIN"),
+  authed(settlePayment),
 );
 
 // ── Earnings reporting ───────────────────────────────────

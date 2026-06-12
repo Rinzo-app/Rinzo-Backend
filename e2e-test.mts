@@ -505,6 +505,52 @@ log("Rider delivers → DELIVERED");
   assert(status === 200, `deliver → ${status}`);
 }
 
+log("Rider collects the COD cash → payment COLLECTED + revenue ledger booked");
+{
+  const { status, body } = await api(
+    "POST",
+    `/api/rider/orders/${orderId}/collect-cash`,
+    riderToken,
+  );
+  assert(status === 200, `collect-cash → ${status}: ${JSON.stringify(body)}`);
+  assert(body.status === "COLLECTED", `payment should be COLLECTED, got ${body.status}`);
+  assert(
+    String(body.collectedBy).startsWith("RIDER:"),
+    `collectedBy should record the rider, got ${body.collectedBy}`,
+  );
+
+  // Replay must be idempotent (the app auto-collects after deliver)
+  const replay = await api("POST", `/api/rider/orders/${orderId}/collect-cash`, riderToken);
+  assert(replay.status === 200, `collect-cash replay → ${replay.status}`);
+
+  // Wallet shows the cash in hand
+  const { body: earnings } = await api("GET", "/api/rider/earnings", riderToken);
+  assert(earnings.cod, "earnings response missing cod summary");
+  assert(earnings.cod.cashInHand > 0, "cashInHand should be positive after collection");
+  assert(
+    earnings.cod.handOver === earnings.cod.cashInHand - earnings.cod.yourCut,
+    "handOver must equal cashInHand - yourCut",
+  );
+}
+
+log("Admin settles the payment → SETTLED, rider's cash-in-hand clears");
+{
+  const { body: order } = await api("GET", `/api/orders/${orderId}`, adminToken);
+  const { status, body } = await api(
+    "POST",
+    `/api/admin/payments/${order.payment.id}/settle`,
+    adminToken,
+  );
+  assert(status === 200, `settle → ${status}: ${JSON.stringify(body)}`);
+  assert(body.status === "SETTLED", `payment should be SETTLED, got ${body.status}`);
+
+  const { body: earnings } = await api("GET", "/api/rider/earnings", riderToken);
+  assert(
+    earnings.cod.cashInHand === 0,
+    `cashInHand should clear after settlement, got ${earnings.cod.cashInHand}`,
+  );
+}
+
 log("Verify final order, full event trail, and rider earnings");
 {
   const { body: order } = await api("GET", `/api/orders/${orderId}`, adminToken);

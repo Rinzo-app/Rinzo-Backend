@@ -3,7 +3,7 @@ import { requireAuth } from "../../middleware/require-auth.js";
 import { requireRole } from "../../middleware/require-role.js";
 import { requireApprovedRider } from "../../middleware/require-approved-rider.js";
 import { authed } from "../../lib/typed-handler.js";
-import { getRiderProfile, updateRiderProfile, toggleAvailability, updateLocation, acceptOffer, declineOffer, pickupOrder, dropoffOrder, deliverOrder } from "./rider.handler.js";
+import { getRiderProfile, updateRiderProfile, toggleAvailability, updateLocation, acceptOffer, declineOffer, pickupOrder, dropoffOrder, deliverOrder, collectCash } from "./rider.handler.js";
 import { getRiderEarnings } from "./rider-earnings.handler.js";
 import { listRiderOrders } from "../orders/orders.read.js";
 
@@ -97,6 +97,14 @@ riderRouter.post(
   requireRole("RIDER"),
   requireApprovedRider(),
   authed(deliverOrder),
+);
+
+riderRouter.post(
+  "/orders/:id/collect-cash",
+  requireAuth,
+  requireRole("RIDER"),
+  requireApprovedRider(),
+  authed(collectCash),
 );
 
 export { riderRouter };

@@ -113,6 +113,13 @@
       "when": 1738972800015,
       "tag": "0015_normalize_money_to_paise",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1738972800016,
+      "tag": "0016_add_settlement",
+      "breakpoints": true
     }
   ]
 }

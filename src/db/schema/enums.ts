@@ -66,6 +66,8 @@ export const paymentMethodEnum = pgEnum("payment_method", [
 export const paymentStatusEnum = pgEnum("payment_status", [
   "PENDING",
   "COLLECTED",
+  // Cash reconciled between the rider and the platform
+  "SETTLED",
   "FAILED",
 ]);
 

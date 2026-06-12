@@ -1,11 +1,10 @@
 import type { Response, NextFunction } from "express";
-import { eq, sql } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { db } from "../../db/client.js";
 import { payments } from "../../db/schema/payments.js";
 import { orders } from "../../db/schema/orders.js";
 import { adminEvents } from "../../db/schema/admin-events.js";
-import { ledgerEntries } from "../../db/schema/ledger-entries.js";
-import { COMMISSION_RATE } from "../../lib/economics.js";
+import { bookCodCollection } from "../../lib/cod-collection.js";
 import type { AuthenticatedRequest } from "../../lib/types.js";
 import {
   BadRequestError,
@@ -99,33 +98,76 @@ export async function markPaymentCollected(
         },
       });
 
-      // ── Ledger entries ────────────────────────────────
-      const commission = Math.round(order.totalAmount * COMMISSION_RATE);
-      const shopEarning = order.totalAmount - commission;
+      // ── Ledger entries (shared with the rider collect path) ──
+      await bookCodCollection(tx, {
+        orderId: payment.orderId,
+        totalAmount: order.totalAmount,
+        platformFee: order.platformFee,
+        shopId: order.shopId,
+      });
 
-      await tx.insert(ledgerEntries).values([
-        {
-          entityType: "PLATFORM",
-          entityId: null,
+      return updated;
+    });
+
+    res.status(200).json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─────────────────────────────────────────────────────────
+// POST /api/admin/payments/:id/settle
+//
+// Admin-only. Records the cash handshake with the rider:
+// the rider handed over the collected COD (minus their cut)
+// and the payment cycle is closed.
+// ─────────────────────────────────────────────────────────
+export async function settlePayment(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const paymentId = parseUUID(req.params.id as string, "payment ID");
+    const adminId = req.user.id;
+
+    const [payment] = await db
+      .select()
+      .from(payments)
+      .where(eq(payments.id, paymentId))
+      .limit(1);
+    if (!payment) {
+      throw new NotFoundError("Payment not found", "ERR_PAYMENT_NOT_FOUND");
+    }
+    if (payment.status !== "COLLECTED") {
+      throw new BadRequestError(
+        `Payment is ${payment.status} — only COLLECTED payments can be settled`,
+        "ERR_PAYMENT_NOT_COLLECTED",
+      );
+    }
+
+    const result = await db.transaction(async (tx) => {
+      const [updated] = await tx
+        .update(payments)
+        .set({
+          status: "SETTLED",
+          settledAt: sql`now()`,
+          updatedAt: sql`now()`,
+        })
+        .where(and(eq(payments.id, paymentId), eq(payments.status, "COLLECTED")))
+        .returning();
+
+      await tx.insert(adminEvents).values({
+        adminId,
+        action: "SETTLE_PAYMENT",
+        targetType: "PAYMENT",
+        targetId: paymentId,
+        details: {
           orderId: payment.orderId,
-          amount: order.platformFee,
-          reason: "PLATFORM_FEE",
+          amount: payment.amount,
+          collectedBy: payment.collectedBy,
         },
-        {
-          entityType: "PLATFORM",
-          entityId: null,
-          orderId: payment.orderId,
-          amount: commission,
-          reason: "COMMISSION",
-        },
-        {
-          entityType: "SHOP",
-          entityId: order.shopId,
-          orderId: payment.orderId,
-          amount: shopEarning,
-          reason: "EARNING",
-        },
-      ]);
+      });
 
       return updated;
     });

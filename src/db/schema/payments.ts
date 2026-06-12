@@ -12,8 +12,9 @@ export const payments = pgTable("payments", {
   amount: integer("amount").notNull(),      // same unit as orders.totalAmount
   method: paymentMethodEnum("method").notNull().default("COD"),
   status: paymentStatusEnum("status").notNull().default("PENDING"),
-  collectedBy: varchar("collected_by", { length: 50 }), // e.g. "SYSTEM"
+  collectedBy: varchar("collected_by", { length: 50 }), // e.g. "SYSTEM" / "RIDER:<id>"
   collectedAt: timestamp("collected_at"),
+  settledAt: timestamp("settled_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

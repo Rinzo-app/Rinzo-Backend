@@ -3,6 +3,8 @@ import { eq, and, gt } from "drizzle-orm";
 import { db } from "../../db/client.js";
 import { riders } from "../../db/schema/riders.js";
 import { ledgerEntries } from "../../db/schema/ledger-entries.js";
+import { payments } from "../../db/schema/payments.js";
+import { orders } from "../../db/schema/orders.js";
 import type { AuthenticatedRequest } from "../../lib/types.js";
 import { NotFoundError } from "../../lib/errors.js";
 
@@ -25,11 +27,23 @@ interface DaySummary {
   entries: EarningsEntry[];
 }
 
+interface CodSummary {
+  /** COD cash the rider collected and hasn't settled yet (paise) */
+  cashInHand: number;
+  /** The rider's own earnings on those same orders (paise) */
+  yourCut: number;
+  /** cashInHand − yourCut: what to hand over at settlement (paise) */
+  handOver: number;
+  /** Number of unsettled collected orders */
+  orderCount: number;
+}
+
 interface EarningsResponse {
   totalEarnings: number;
   totalDistanceKm: number;
   totalLegs: number;
   days: DaySummary[];
+  cod: CodSummary;
 }
 
 // ── GET /api/rider/earnings ────────────────────────────
@@ -130,11 +144,41 @@ export async function getRiderEarnings(
     }
     days.reverse(); // Map insertion order was ASC; reverse for DESC
 
+    // ── COD cash-in-hand (collected by this rider, not settled) ──
+    const collected = await db
+      .select({
+        orderId: payments.orderId,
+        amount: payments.amount,
+      })
+      .from(payments)
+      .innerJoin(orders, eq(orders.id, payments.orderId))
+      .where(
+        and(
+          eq(payments.status, "COLLECTED"),
+          eq(orders.riderId, rider.id),
+        ),
+      );
+
+    const cashInHand = collected.reduce((s, p) => s + p.amount, 0);
+    const collectedOrderIds = collected.map((p) => p.orderId);
+    const yourCut =
+      collectedOrderIds.length > 0
+        ? rows
+            .filter((r) => r.orderId && collectedOrderIds.includes(r.orderId))
+            .reduce((s, r) => s + r.amount, 0)
+        : 0;
+
     const body: EarningsResponse = {
       totalEarnings,
       totalDistanceKm: Math.round(totalDistanceKm * 100) / 100,
       totalLegs: rows.length,
       days,
+      cod: {
+        cashInHand,
+        yourCut,
+        handOver: Math.max(0, cashInHand - yourCut),
+        orderCount: collected.length,
+      },
     };
 
     res.status(200).json(body);

@@ -8,6 +8,7 @@ import { riders } from "../../db/schema/riders.js";
 import { users } from "../../db/schema/users.js";
 import { shops } from "../../db/schema/shops.js";
 import { ledgerEntries } from "../../db/schema/ledger-entries.js";
+import { payments } from "../../db/schema/payments.js";
 import type { AuthenticatedRequest } from "../../lib/types.js";
 import {
   NotFoundError,
@@ -20,6 +21,7 @@ import type { OrderStatus } from "../../lib/order-machine.js";
 import { assertTransition } from "../../lib/order-machine.js";
 import { resolveRiderLegDistanceKm } from "../../lib/rider-distance.js";
 import { releasePickupOffer } from "../../lib/auto-assign.js";
+import { bookCodCollection } from "../../lib/cod-collection.js";
 import { RIDER_PAYOUT_PER_KM } from "../../config/rider-payout.js";
 import { DELIVERY_RATE_PER_KM } from "../../config/delivery.js";
 import { notifyUserAsync } from "../../lib/push.js";
@@ -607,6 +609,80 @@ export async function deliverOrder(
     );
 
     res.status(200).json(updated);
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─────────────────────────────────────────────────────────
+// POST /api/rider/orders/:id/collect-cash
+// Rider confirms the COD amount was collected at delivery.
+// ─────────────────────────────────────────────────────────
+
+export async function collectCash(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const orderId = parseUUID(req.params.id as string, "order ID");
+    const rider = await getRiderForUser(req.user.id);
+    const order = await getOrderForRider(orderId, rider.id);
+
+    if (order.status !== "DELIVERED") {
+      throw new ConflictError(
+        "Cash can only be collected once the order is delivered",
+        "ERR_ORDER_NOT_DELIVERED",
+      );
+    }
+
+    const [payment] = await db
+      .select()
+      .from(payments)
+      .where(eq(payments.orderId, orderId))
+      .limit(1);
+    if (!payment) {
+      throw new NotFoundError("Payment record not found", "ERR_PAYMENT_NOT_FOUND");
+    }
+    if (payment.method !== "COD") {
+      throw new ConflictError(
+        "Only COD payments are collected in cash",
+        "ERR_NOT_COD",
+      );
+    }
+    if (payment.status !== "PENDING") {
+      // Already collected (or settled) — idempotent success so the
+      // app's auto-collect after deliver never errors on a retry.
+      res.status(200).json(payment);
+      return;
+    }
+
+    const updated = await db.transaction(async (tx) => {
+      const [row] = await tx
+        .update(payments)
+        .set({
+          status: "COLLECTED",
+          collectedBy: `RIDER:${rider.id}`,
+          collectedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(and(eq(payments.orderId, orderId), eq(payments.status, "PENDING")))
+        .returning();
+
+      if (!row) return null; // raced with another collector — no double booking
+
+      // Same revenue split the admin path books on collection
+      await bookCodCollection(tx, {
+        orderId,
+        totalAmount: order.totalAmount,
+        platformFee: order.platformFee,
+        shopId: order.shopId,
+      });
+
+      return row;
+    });
+
+    res.status(200).json(updated ?? payment);
   } catch (err) {
     next(err);
   }
