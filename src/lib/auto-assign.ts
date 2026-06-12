@@ -179,6 +179,7 @@ async function findAvailableRiders(
  */
 export async function tryAutoAssignPickup(
   orderId: string,
+  { allowCycleReset = false }: { allowCycleReset?: boolean } = {},
 ): Promise<string | null> {
   // Re-read order to get latest committed state
   const [order] = await db
@@ -220,7 +221,14 @@ export async function tryAutoAssignPickup(
   const declined = Array.isArray(order.declinedRiderIds)
     ? (order.declinedRiderIds as string[])
     : [];
-  const candidates = await findAvailableRiders(shopLat, shopLng, 3, declined);
+  let candidates = await findAvailableRiders(shopLat, shopLng, 3, declined);
+
+  // Cycle reset (sweeper only): when every available rider has declined,
+  // re-open the rotation rather than stranding the order — better an
+  // already-declined rider gets re-asked than nobody at all.
+  if (candidates.length === 0 && allowCycleReset && declined.length > 0) {
+    candidates = await findAvailableRiders(shopLat, shopLng, 3, []);
+  }
   if (candidates.length === 0) return null;
 
   try {
@@ -327,7 +335,12 @@ export async function releasePickupOffer(
       const declined = Array.isArray(fresh.declinedRiderIds)
         ? (fresh.declinedRiderIds as string[])
         : [];
-      if (!declined.includes(riderId)) declined.push(riderId);
+      // Only an explicit decline excludes the rider from re-offers.
+      // A timed-out offer (actor SYSTEM) just returns to the pool —
+      // missing a 60s window shouldn't blacklist the rider.
+      if (actor === "RIDER" && !declined.includes(riderId)) {
+        declined.push(riderId);
+      }
 
       await tx
         .update(orders)

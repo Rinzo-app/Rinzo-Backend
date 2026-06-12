@@ -66,7 +66,7 @@ async function sweepOnce(): Promise<void> {
     .limit(BATCH_LIMIT);
 
   for (const o of stale) {
-    await tryAutoAssignPickup(o.id);
+    await tryAutoAssignPickup(o.id, { allowCycleReset: true });
   }
 }
 
