@@ -1,4 +1,5 @@
 import type { Response, NextFunction } from "express";
+import { z } from "zod";
 import { eq, and, inArray, sql } from "drizzle-orm";
 import { db } from "../../db/client.js";
 import { shops } from "../../db/schema/shops.js";
@@ -8,6 +9,7 @@ import { orderEvents } from "../../db/schema/order-events.js";
 import { payments } from "../../db/schema/payments.js";
 import { PLATFORM_FEE } from "../../lib/economics.js";
 import { computeDeliveryFee } from "../../lib/delivery-fee.js";
+import { decideAdjustment } from "../../lib/weighing.js";
 import { haversineDistance } from "../../lib/geo.js";
 import type { AuthenticatedRequest } from "../../lib/types.js";
 import {
@@ -588,6 +590,246 @@ export async function rejectOrder(
   }
 }
 // ─────────────────────────────────────────────────────────
+// POST /api/orders/:id/weigh
+//
+// The shop weighs the laundry once it arrives (AT_SHOP) and submits
+// actual quantities. The price recalculates:
+//   - decrease / increase ≤ AUTO_APPROVE_INCREASE_PCT → applies now
+//   - larger increase → PENDING until the customer approves
+// Re-weighing is allowed while the order is still AT_SHOP; the
+// approval threshold always compares against the customer's
+// original checkout estimate.
+// ─────────────────────────────────────────────────────────
+
+const weighSchema = z.object({
+  items: z
+    .array(
+      z.object({
+        itemId: z.string().uuid(),
+        actualQuantity: z.number().positive().max(1000),
+      }),
+    )
+    .min(1),
+});
+
+export async function weighOrder(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const orderId = parseUUID(req.params.id as string, "order ID");
+    const ownerId = req.user.id;
+
+    const parsed = weighSchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw new BadRequestError(
+        parsed.error.issues.map((i) => i.message).join("; "),
+      );
+    }
+
+    const [order] = await db
+      .select()
+      .from(orders)
+      .where(eq(orders.id, orderId))
+      .limit(1);
+    if (!order) {
+      throw new NotFoundError("Order not found", "ERR_ORDER_NOT_FOUND");
+    }
+
+    const [shop] = await db
+      .select()
+      .from(shops)
+      .where(and(eq(shops.id, order.shopId), eq(shops.ownerId, ownerId)))
+      .limit(1);
+    if (!shop) {
+      throw new ForbiddenError(
+        "You do not own the shop this order belongs to",
+        "ERR_NOT_SHOP_OWNER",
+      );
+    }
+
+    if (order.status !== "AT_SHOP") {
+      throw new ConflictError(
+        "Weighing is only possible while the laundry is at the shop",
+        "ERR_NOT_AT_SHOP",
+      );
+    }
+
+    const items = await db
+      .select()
+      .from(orderItems)
+      .where(eq(orderItems.orderId, orderId));
+
+    const byId = new Map(items.map((i) => [i.id, i]));
+    for (const w of parsed.data.items) {
+      if (!byId.has(w.itemId)) {
+        throw new BadRequestError(`Item ${w.itemId} does not belong to this order`);
+      }
+    }
+
+    // New total: weighed items use actual qty, the rest keep estimates
+    const weighedById = new Map(parsed.data.items.map((w) => [w.itemId, w.actualQuantity]));
+    let newTotal = 0;
+    for (const item of items) {
+      const actual = weighedById.get(item.id);
+      const prevActual = item.actualQuantity;
+      const qty = actual ?? prevActual ?? item.quantity;
+      newTotal += Math.round(item.price * qty);
+    }
+
+    const baseline = order.originalTotalAmount ?? order.totalAmount;
+    const decision = decideAdjustment(baseline, newTotal);
+
+    const updated = await db.transaction(async (tx) => {
+      for (const w of parsed.data.items) {
+        await tx
+          .update(orderItems)
+          .set({ actualQuantity: w.actualQuantity })
+          .where(eq(orderItems.id, w.itemId));
+      }
+
+      if (decision === "APPLY") {
+        const [row] = await tx
+          .update(orders)
+          .set({
+            totalAmount: newTotal,
+            originalTotalAmount: baseline,
+            proposedTotalAmount: null,
+            adjustmentStatus: "APPLIED",
+            updatedAt: new Date(),
+          })
+          .where(eq(orders.id, orderId))
+          .returning();
+
+        await tx
+          .update(payments)
+          .set({ amount: newTotal + order.platformFee + order.deliveryFee })
+          .where(and(eq(payments.orderId, orderId), eq(payments.status, "PENDING")));
+
+        return row;
+      }
+
+      const [row] = await tx
+        .update(orders)
+        .set({
+          originalTotalAmount: baseline,
+          proposedTotalAmount: newTotal,
+          adjustmentStatus: "PENDING",
+          updatedAt: new Date(),
+        })
+        .where(eq(orders.id, orderId))
+        .returning();
+      return row;
+    });
+
+    if (decision === "APPLY") {
+      if (newTotal !== baseline) {
+        notifyUserAsync(
+          order.customerId,
+          "Final price updated ⚖️",
+          `Your laundry weighed in at ₹${(newTotal / 100).toFixed(0)} (was ₹${(baseline / 100).toFixed(0)} estimated).`,
+          { type: "PRICE_ADJUSTED", orderId },
+        );
+      }
+    } else {
+      notifyUserAsync(
+        order.customerId,
+        "Price approval needed ⚖️",
+        `After weighing, your order comes to ₹${(newTotal / 100).toFixed(0)} (estimated ₹${(baseline / 100).toFixed(0)}). Open the app to approve.`,
+        { type: "PRICE_APPROVAL_NEEDED", orderId },
+      );
+    }
+
+    res.status(200).json(updated);
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─────────────────────────────────────────────────────────
+// POST /api/orders/:id/approve-adjustment
+// Customer approves a weighed price that exceeded the
+// auto-approval threshold.
+// ─────────────────────────────────────────────────────────
+
+export async function approveAdjustment(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const orderId = parseUUID(req.params.id as string, "order ID");
+
+    const [order] = await db
+      .select()
+      .from(orders)
+      .where(eq(orders.id, orderId))
+      .limit(1);
+    if (!order) {
+      throw new NotFoundError("Order not found", "ERR_ORDER_NOT_FOUND");
+    }
+    if (order.customerId !== req.user.id) {
+      throw new ForbiddenError("This is not your order", "ERR_NOT_YOUR_ORDER");
+    }
+    if (order.adjustmentStatus !== "PENDING" || order.proposedTotalAmount == null) {
+      throw new ConflictError(
+        "There is no price adjustment waiting for approval",
+        "ERR_NO_PENDING_ADJUSTMENT",
+      );
+    }
+
+    const newTotal = order.proposedTotalAmount;
+
+    const updated = await db.transaction(async (tx) => {
+      const [row] = await tx
+        .update(orders)
+        .set({
+          totalAmount: newTotal,
+          proposedTotalAmount: null,
+          adjustmentStatus: "APPLIED",
+          updatedAt: new Date(),
+        })
+        .where(and(eq(orders.id, orderId), eq(orders.adjustmentStatus, "PENDING")))
+        .returning();
+
+      if (!row) {
+        throw new ConflictError(
+          "Adjustment changed concurrently — please retry",
+          "ERR_ORDER_RACE",
+        );
+      }
+
+      await tx
+        .update(payments)
+        .set({ amount: newTotal + order.platformFee + order.deliveryFee })
+        .where(and(eq(payments.orderId, orderId), eq(payments.status, "PENDING")));
+
+      return row;
+    });
+
+    // Tell the shop they can proceed
+    const [shop] = await db
+      .select({ ownerId: shops.ownerId })
+      .from(shops)
+      .where(eq(shops.id, order.shopId))
+      .limit(1);
+    if (shop) {
+      notifyUserAsync(
+        shop.ownerId,
+        "Price approved ✅",
+        "The customer approved the weighed price — you can continue with the order.",
+        { type: "PRICE_APPROVED", orderId },
+      );
+    }
+
+    res.status(200).json(updated);
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─────────────────────────────────────────────────────────
 // POST /api/orders/:id/ready
 // AT_SHOP → READY
 // ─────────────────────────────────────────────────────────
@@ -628,7 +870,17 @@ export async function markReady(
       );
     }
 
-    // ── 3. Validate transition ────────────────────────────
+    // ── 3. Price adjustment gate ──────────────────────────
+    // A weighed price above the auto-approve threshold must be
+    // accepted by the customer before the order can progress.
+    if (order.adjustmentStatus === "PENDING") {
+      throw new ConflictError(
+        "Waiting for the customer to approve the updated price",
+        "ERR_ADJUSTMENT_PENDING",
+      );
+    }
+
+    // ── 4. Validate transition ────────────────────────────
     assertTransition(
       order.status as OrderStatus,
       "READY",

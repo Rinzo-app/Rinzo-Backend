@@ -99,6 +99,13 @@
       "when": 1738972800013,
       "tag": "0013_add_pickup_offers",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1738972800014,
+      "tag": "0014_add_weighing",
+      "breakpoints": true
     }
   ]
 }

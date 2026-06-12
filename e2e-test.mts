@@ -420,6 +420,60 @@ log("Rider drops at shop → AT_SHOP");
   assert(status === 200, `dropoff → ${status}`);
 }
 
+// ── Weighing / price adjustment ───────────────────────────
+let weighItemId: string;
+let estimatedTotal: number;
+log("Weigh (small change) → price applies automatically");
+{
+  const { body: order } = await api("GET", `/api/orders/${orderId}`, ownerToken);
+  estimatedTotal = order.totalAmount;
+  weighItemId = order.items[0].id;
+  const estQty = order.items[0].quantity;
+
+  // +10% → auto-applies
+  const { status, body } = await api("POST", `/api/orders/${orderId}/weigh`, ownerToken, {
+    items: [{ itemId: weighItemId, actualQuantity: estQty * 1.1 }],
+  });
+  assert(status === 200, `weigh → ${status}: ${JSON.stringify(body)}`);
+  assert(body.adjustmentStatus === "APPLIED", `expected APPLIED, got ${body.adjustmentStatus}`);
+  assert(body.totalAmount > estimatedTotal, "total should have increased");
+  assert(body.originalTotalAmount === estimatedTotal, "original estimate not preserved");
+}
+
+log("Re-weigh (large increase) → needs customer approval, blocks Mark Ready");
+{
+  const { body: order } = await api("GET", `/api/orders/${orderId}`, ownerToken);
+  const estQty = order.items[0].quantity;
+  const { status, body } = await api("POST", `/api/orders/${orderId}/weigh`, ownerToken, {
+    items: [{ itemId: weighItemId, actualQuantity: estQty * 2.5 }],
+  });
+  assert(status === 200, `re-weigh → ${status}: ${JSON.stringify(body)}`);
+  assert(body.adjustmentStatus === "PENDING", `expected PENDING, got ${body.adjustmentStatus}`);
+  assert(body.totalAmount === order.totalAmount, "total must not change before approval");
+  assert(body.proposedTotalAmount > body.totalAmount, "proposed total missing");
+
+  const ready = await api("POST", `/api/orders/${orderId}/ready`, ownerToken);
+  assert(ready.status === 409, `ready during pending adjustment should be 409, got ${ready.status}`);
+}
+
+log("Customer approves the adjusted price → total + payment update");
+{
+  const { status, body } = await api(
+    "POST",
+    `/api/orders/${orderId}/approve-adjustment`,
+    customerToken,
+  );
+  assert(status === 200, `approve-adjustment → ${status}: ${JSON.stringify(body)}`);
+  assert(body.adjustmentStatus === "APPLIED", `expected APPLIED, got ${body.adjustmentStatus}`);
+  assert(body.proposedTotalAmount === null, "proposed should clear after approval");
+
+  const { body: order } = await api("GET", `/api/orders/${orderId}`, customerToken);
+  assert(
+    order.payment.amount === order.totalAmount + order.platformFee + order.deliveryFee,
+    "payment amount should track the approved total",
+  );
+}
+
 log("Owner marks ready → auto-dispatch should move it to OUT_FOR_DELIVERY");
 {
   const { status } = await api("POST", `/api/orders/${orderId}/ready`, ownerToken);
@@ -487,11 +541,19 @@ let declineOrderId: string;
   const decline = await api("POST", `/api/rider/orders/${declineOrderId}/decline`, riderToken);
   assert(decline.status === 200, `decline → ${decline.status}`);
 
-  // Only one rider exists and they declined — order returns to the
-  // pool with no rider and the decliner excluded from re-offers.
+  // The decliner must be excluded from re-offers. (The prod DB may
+  // have OTHER available riders, in which case the order is already
+  // re-offered to one of them — both outcomes are correct.)
+  const { body: riderProfileCheck } = await api("GET", "/api/rider/profile", riderToken);
   const { body: order } = await api("GET", `/api/orders/${declineOrderId}`, adminToken);
-  assert(order.status === "SHOP_ACCEPTED", `after decline status ${order.status}`);
-  assert(!order.riderId, "riderId should clear after decline");
+  assert(
+    ["SHOP_ACCEPTED", "PICKUP_OFFERED"].includes(order.status),
+    `after decline status ${order.status}`,
+  );
+  assert(
+    order.riderId !== riderProfileCheck.riderId,
+    "order must not be re-offered to the rider who declined",
+  );
 
   // Admin can still force-assign past the offer system.
   const { body: riderProfile } = await api("GET", "/api/rider/profile", riderToken);

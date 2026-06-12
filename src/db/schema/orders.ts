@@ -28,6 +28,13 @@ export const orders = pgTable("orders", {
   // Scheduling fields (nullable — customer may not have selected)
   pickupDate: varchar("pickup_date", { length: 20 }),
   pickupSlot: varchar("pickup_slot", { length: 50 }),
+  // ── Weighing / price adjustment ────────────────────────
+  // Customers estimate quantities at checkout; the shop weighs the
+  // laundry at AT_SHOP and the price adjusts. Large increases need
+  // customer approval before the order can progress.
+  originalTotalAmount: integer("original_total_amount"),
+  proposedTotalAmount: integer("proposed_total_amount"),
+  adjustmentStatus: varchar("adjustment_status", { length: 20 }).notNull().default("NONE"),
   // ── Pickup offer flow ──────────────────────────────────
   // While status is PICKUP_OFFERED, riderId holds the offered rider
   // and offerExpiresAt the deadline; declined riders are excluded
@@ -52,4 +59,6 @@ export const orderItems = pgTable("order_items", {
   serviceName: text("service_name").notNull(),
   price: integer("price").notNull(),
   quantity: integer("quantity").notNull(),
+  // Actual measured quantity (kg can be fractional) — null until weighed
+  actualQuantity: doublePrecision("actual_quantity"),
 });

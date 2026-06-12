@@ -7,7 +7,7 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
-    "test": "tsx --test src/lib/order-machine.test.ts src/lib/rider-distance.test.ts src/lib/geo.test.ts src/lib/delivery-fee.test.ts",
+    "test": "tsx --test src/lib/order-machine.test.ts src/lib/rider-distance.test.ts src/lib/geo.test.ts src/lib/delivery-fee.test.ts src/lib/weighing.test.ts",
     "db:migrate": "drizzle-kit migrate"
   },
   "dependencies": {
