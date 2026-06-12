@@ -2,7 +2,7 @@ import { Router } from "express";
 import { requireAuth } from "../../middleware/require-auth.js";
 import { requireRole } from "../../middleware/require-role.js";
 import { authed } from "../../lib/typed-handler.js";
-import { createOrder, cancelOrder, acceptOrder, rejectOrder, markReady, weighOrder, approveAdjustment, quoteOrder } from "./orders.handler.js";
+import { createOrder, cancelOrder, acceptOrder, rejectOrder, markReady, weighOrder, approveAdjustment, quoteOrder, startPayment, checkPaymentStatus } from "./orders.handler.js";
 import { getOrderById, getOrderEvents } from "./orders.read.js";
 
 const ordersRouter = Router();
@@ -66,6 +66,20 @@ ordersRouter.post(
   requireAuth,
   requireRole("CUSTOMER"),
   authed(approveAdjustment),
+);
+
+ordersRouter.post(
+  "/:id/pay",
+  requireAuth,
+  requireRole("CUSTOMER"),
+  authed(startPayment),
+);
+
+ordersRouter.get(
+  "/:id/payment-status",
+  requireAuth,
+  requireRole("CUSTOMER"),
+  authed(checkPaymentStatus),
 );
 
 ordersRouter.post(

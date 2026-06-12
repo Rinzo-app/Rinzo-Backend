@@ -120,6 +120,13 @@
       "when": 1738972800016,
       "tag": "0016_add_settlement",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1738972800017,
+      "tag": "0017_add_upi_payments",
+      "breakpoints": true
     }
   ]
 }

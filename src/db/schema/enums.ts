@@ -61,6 +61,7 @@ export const rejectionReasonEnum = pgEnum("rejection_reason", [
 // ── Payments ───────────────────────────────────────────
 export const paymentMethodEnum = pgEnum("payment_method", [
   "COD",
+  "UPI",
 ]);
 
 export const paymentStatusEnum = pgEnum("payment_status", [

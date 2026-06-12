@@ -155,6 +155,8 @@ export async function getRiderEarnings(
       .where(
         and(
           eq(payments.status, "COLLECTED"),
+          // UPI money never passes through the rider's hands
+          eq(payments.method, "COD"),
           eq(orders.riderId, rider.id),
         ),
       );

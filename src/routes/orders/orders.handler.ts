@@ -24,6 +24,8 @@ import { assertTransition } from "../../lib/order-machine.js";
 import { createOrderSchema, rejectOrderSchema } from "./orders.schema.js";
 import { tryAutoAssignPickup, tryAutoAssignDelivery } from "../../lib/auto-assign.js";
 import { notifyUserAsync } from "../../lib/push.js";
+import { getPaymentProvider } from "../../lib/payments/index.js";
+import { bookCodCollection } from "../../lib/cod-collection.js";
 
 // ── Active statuses that count toward daily capacity ────
 const ACTIVE_STATUSES: OrderStatus[] = [
@@ -589,6 +591,175 @@ export async function rejectOrder(
     next(err);
   }
 }
+// ─────────────────────────────────────────────────────────
+// POST /api/orders/:id/pay
+//
+// Customer starts an online (UPI) payment for their order.
+// Allowed once the price is final (no pending weighing approval)
+// and while the COD payment is still PENDING. Returns the
+// gateway checkout URL the app opens in the in-app browser.
+// ─────────────────────────────────────────────────────────
+
+export async function startPayment(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const orderId = parseUUID(req.params.id as string, "order ID");
+
+    const [order] = await db
+      .select()
+      .from(orders)
+      .where(eq(orders.id, orderId))
+      .limit(1);
+    if (!order) {
+      throw new NotFoundError("Order not found", "ERR_ORDER_NOT_FOUND");
+    }
+    if (order.customerId !== req.user.id) {
+      throw new ForbiddenError("This is not your order", "ERR_NOT_YOUR_ORDER");
+    }
+    if (order.status === "CANCELLED" || order.status === "REJECTED_BY_SHOP") {
+      throw new ConflictError("This order is not payable", "ERR_ORDER_NOT_PAYABLE");
+    }
+    if (order.adjustmentStatus === "PENDING") {
+      throw new ConflictError(
+        "Approve the updated price before paying",
+        "ERR_ADJUSTMENT_PENDING",
+      );
+    }
+
+    const [payment] = await db
+      .select()
+      .from(payments)
+      .where(eq(payments.orderId, orderId))
+      .limit(1);
+    if (!payment) {
+      throw new NotFoundError("Payment record not found", "ERR_PAYMENT_NOT_FOUND");
+    }
+    if (payment.status !== "PENDING") {
+      throw new ConflictError(
+        "This order is already paid",
+        "ERR_ALREADY_PAID",
+      );
+    }
+
+    const provider = getPaymentProvider();
+    // Never allow the fake gateway to "collect" real orders in
+    // production — online pay stays off until PhonePe creds exist.
+    if (provider.name === "simulated" && process.env.NODE_ENV === "production") {
+      throw new ConflictError(
+        "Online payments are launching soon — please pay cash at delivery",
+        "ERR_PAYMENTS_UNAVAILABLE",
+      );
+    }
+    const created = await provider.createPayment({
+      paymentId: payment.id,
+      orderId,
+      amount: payment.amount,
+      redirectUrl: `${process.env.PAYMENT_REDIRECT_URL ?? "https://rinzo.app"}/payment-done`,
+    });
+
+    await db
+      .update(payments)
+      .set({
+        provider: provider.name,
+        providerOrderId: created.providerOrderId,
+        updatedAt: new Date(),
+      })
+      .where(eq(payments.id, payment.id));
+
+    res.status(200).json({ checkoutUrl: created.checkoutUrl });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─────────────────────────────────────────────────────────
+// GET /api/orders/:id/payment-status
+//
+// Customer polls after returning from the gateway. On SUCCESS the
+// payment flips to COLLECTED (method UPI) and the revenue split is
+// booked — the rider then has no cash to collect.
+// ─────────────────────────────────────────────────────────
+
+export async function checkPaymentStatus(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const orderId = parseUUID(req.params.id as string, "order ID");
+
+    const [order] = await db
+      .select()
+      .from(orders)
+      .where(eq(orders.id, orderId))
+      .limit(1);
+    if (!order) {
+      throw new NotFoundError("Order not found", "ERR_ORDER_NOT_FOUND");
+    }
+    if (order.customerId !== req.user.id) {
+      throw new ForbiddenError("This is not your order", "ERR_NOT_YOUR_ORDER");
+    }
+
+    const [payment] = await db
+      .select()
+      .from(payments)
+      .where(eq(payments.orderId, orderId))
+      .limit(1);
+    if (!payment) {
+      throw new NotFoundError("Payment record not found", "ERR_PAYMENT_NOT_FOUND");
+    }
+
+    // Already finalized — nothing to ask the gateway
+    if (payment.status !== "PENDING" || !payment.providerOrderId) {
+      res.status(200).json({ status: payment.status, method: payment.method });
+      return;
+    }
+
+    const provider = getPaymentProvider();
+    const providerStatus = await provider.getStatus(payment.providerOrderId);
+
+    if (providerStatus === "SUCCESS") {
+      await db.transaction(async (tx) => {
+        const [row] = await tx
+          .update(payments)
+          .set({
+            status: "COLLECTED",
+            method: "UPI",
+            collectedBy: `UPI:${provider.name}`,
+            collectedAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(and(eq(payments.id, payment.id), eq(payments.status, "PENDING")))
+          .returning();
+
+        if (row) {
+          // Same revenue split as a COD collection
+          await bookCodCollection(tx, {
+            orderId,
+            totalAmount: order.totalAmount,
+            platformFee: order.platformFee,
+            shopId: order.shopId,
+          });
+        }
+      });
+
+      res.status(200).json({ status: "COLLECTED", method: "UPI" });
+      return;
+    }
+
+    res.status(200).json({
+      status: "PENDING",
+      method: payment.method,
+      gateway: providerStatus,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
 // ─────────────────────────────────────────────────────────
 // POST /api/orders/quote
 //

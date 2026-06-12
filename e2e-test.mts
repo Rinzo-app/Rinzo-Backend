@@ -632,6 +632,35 @@ let declineOrderId: string;
   assert(assigned.riderId, "riderId not set after manual assign");
 }
 
+// ── Online (UPI) payment via the simulated gateway ────────
+log("Customer pays the decline-test order online → COLLECTED via UPI");
+{
+  const pay = await api("POST", `/api/orders/${declineOrderId}/pay`, customerToken);
+  if (pay.status === 409 && pay.body?.error?.code === "ERR_PAYMENTS_UNAVAILABLE") {
+    // Production guard: the simulated gateway is disabled there until
+    // real PhonePe credentials are configured. Covered in local runs.
+    console.log("     online payments disabled in this environment — step skipped");
+  } else {
+  assert(pay.status === 200, `pay → ${pay.status}: ${JSON.stringify(pay.body)}`);
+  assert(pay.body.checkoutUrl, "pay should return a checkoutUrl");
+
+  // Simulated gateway: first status check is PENDING, then SUCCESS
+  const s1 = await api("GET", `/api/orders/${declineOrderId}/payment-status`, customerToken);
+  assert(s1.status === 200 && s1.body.status === "PENDING", `first poll should be PENDING, got ${JSON.stringify(s1.body)}`);
+  const s2 = await api("GET", `/api/orders/${declineOrderId}/payment-status`, customerToken);
+  assert(s2.body.status === "COLLECTED" && s2.body.method === "UPI",
+    `second poll should be COLLECTED/UPI, got ${JSON.stringify(s2.body)}`);
+
+  // Paying twice must be rejected
+  const again = await api("POST", `/api/orders/${declineOrderId}/pay`, customerToken);
+  assert(again.status === 409, `second pay should be 409, got ${again.status}`);
+
+  // UPI money never counts as rider cash-in-hand
+  const { body: earnings } = await api("GET", "/api/rider/earnings", riderToken);
+  assert(earnings.cod.cashInHand === 0, `UPI must not appear in rider cash, got ${earnings.cod.cashInHand}`);
+  }
+}
+
 // ── Suspension semantics ──────────────────────────────────
 log("Suspension: customer places a second order WITHOUT coords (stays PLACED)");
 let order2Id: string;

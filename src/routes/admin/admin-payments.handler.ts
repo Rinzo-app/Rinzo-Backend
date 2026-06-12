@@ -145,6 +145,12 @@ export async function settlePayment(
         "ERR_PAYMENT_NOT_COLLECTED",
       );
     }
+    if (payment.method !== "COD") {
+      throw new BadRequestError(
+        "Online payments settle directly to the merchant account — no rider handshake to record",
+        "ERR_NOT_COD",
+      );
+    }
 
     const result = await db.transaction(async (tx) => {
       const [updated] = await tx
