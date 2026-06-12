@@ -590,6 +590,99 @@ export async function rejectOrder(
   }
 }
 // ─────────────────────────────────────────────────────────
+// POST /api/orders/quote
+//
+// Price preview for checkout — same math as createOrder but with
+// no side effects, so the customer sees the full breakdown
+// (items + delivery + platform fee) BEFORE placing the order.
+// ─────────────────────────────────────────────────────────
+
+const quoteSchema = z.object({
+  shopId: z.string().uuid(),
+  items: z
+    .array(
+      z.object({
+        serviceId: z.string().uuid(),
+        quantity: z.number().int().positive().max(100),
+      }),
+    )
+    .min(1),
+  pickupLat: z.number().min(-90).max(90).optional(),
+  pickupLng: z.number().min(-180).max(180).optional(),
+});
+
+export async function quoteOrder(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const parsed = quoteSchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw new BadRequestError(
+        parsed.error.issues.map((i) => i.message).join("; "),
+      );
+    }
+    const body = parsed.data;
+
+    const [shop] = await db
+      .select()
+      .from(shops)
+      .where(eq(shops.id, body.shopId))
+      .limit(1);
+    if (!shop) {
+      throw new NotFoundError("Shop not found", "ERR_SHOP_NOT_FOUND");
+    }
+
+    const shopServices = await db
+      .select()
+      .from(services)
+      .where(
+        and(
+          eq(services.shopId, shop.id),
+          inArray(services.id, body.items.map((i) => i.serviceId)),
+          eq(services.isActive, true),
+        ),
+      );
+    const serviceMap = new Map(shopServices.map((s) => [s.id, s]));
+    for (const item of body.items) {
+      if (!serviceMap.has(item.serviceId)) {
+        throw new BadRequestError(
+          `Service '${item.serviceId}' is not available at this shop`,
+          "ERR_SERVICE_UNAVAILABLE",
+        );
+      }
+    }
+
+    const itemsTotal = body.items.reduce(
+      (sum, item) => sum + serviceMap.get(item.serviceId)!.price * item.quantity,
+      0,
+    );
+
+    const hasCoords =
+      body.pickupLat != null &&
+      body.pickupLng != null &&
+      Number.isFinite(body.pickupLat) &&
+      Number.isFinite(body.pickupLng);
+
+    const deliveryFee = computeDeliveryFee(
+      hasCoords
+        ? haversineDistance(body.pickupLat!, body.pickupLng!, shop.latitude, shop.longitude)
+        : null,
+    );
+
+    res.status(200).json({
+      itemsTotal,
+      deliveryFee,
+      platformFee: PLATFORM_FEE,
+      total: itemsTotal + deliveryFee + PLATFORM_FEE,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─────────────────────────────────────────────────────────
 // POST /api/orders/:id/weigh
 //
 // The shop weighs the laundry once it arrives (AT_SHOP) and submits

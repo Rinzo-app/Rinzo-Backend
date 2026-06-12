@@ -340,6 +340,24 @@ log("Customer browses shops → approved shop is visible");
   );
 }
 
+log("Quote shows the full price breakdown before ordering");
+{
+  const { status, body } = await api("POST", "/api/orders/quote", customerToken, {
+    shopId,
+    items: [{ serviceId, quantity: 2 }],
+    pickupLat: 12.97,
+    pickupLng: 77.593,
+  });
+  assert(status === 200, `quote → ${status}: ${JSON.stringify(body)}`);
+  assert(body.itemsTotal > 0, "quote itemsTotal missing");
+  assert(body.deliveryFee > 0, "quote deliveryFee missing");
+  assert(body.platformFee > 0, "quote platformFee missing");
+  assert(
+    body.total === body.itemsTotal + body.deliveryFee + body.platformFee,
+    "quote total must equal the sum of its parts",
+  );
+}
+
 log("Customer places an order (COD, with idempotency key)");
 let orderId: string;
 const orderKey = `e2e-key-${Date.now()}-${Math.random().toString(36).slice(2)}`;
