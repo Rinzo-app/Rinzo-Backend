@@ -36,6 +36,14 @@ export const riderStatusEnum = pgEnum("rider_status", [
   "SUSPENDED",
 ]);
 
+// Rider KYC document review lifecycle
+export const documentsStatusEnum = pgEnum("documents_status", [
+  "NOT_SUBMITTED",
+  "SUBMITTED",
+  "VERIFIED",
+  "REJECTED",
+]);
+
 // ── Orders ─────────────────────────────────────────────
 export const orderStatusEnum = pgEnum("order_status", [
   "PLACED",

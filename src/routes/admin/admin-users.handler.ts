@@ -105,6 +105,11 @@ export async function listUsers(
           vehicleType: riders.vehicleType,
           vehicleNumber: riders.vehicleNumber,
           licenseNumber: riders.licenseNumber,
+          dlImageUrl: riders.dlImageUrl,
+          rcImageUrl: riders.rcImageUrl,
+          selfieUrl: riders.selfieUrl,
+          documentsStatus: riders.documentsStatus,
+          documentsRejectionReason: riders.documentsRejectionReason,
         })
         .from(riders)
         .where(inArray(riders.userId, rows.map((r) => r.id)));
@@ -114,6 +119,11 @@ export async function listUsers(
         vehicleType: byUser.get(r.id)?.vehicleType ?? null,
         vehicleNumber: byUser.get(r.id)?.vehicleNumber || null,
         licenseNumber: byUser.get(r.id)?.licenseNumber || null,
+        dlImageUrl: byUser.get(r.id)?.dlImageUrl ?? null,
+        rcImageUrl: byUser.get(r.id)?.rcImageUrl ?? null,
+        selfieUrl: byUser.get(r.id)?.selfieUrl ?? null,
+        documentsStatus: byUser.get(r.id)?.documentsStatus ?? "NOT_SUBMITTED",
+        documentsRejectionReason: byUser.get(r.id)?.documentsRejectionReason ?? null,
       }));
       res.json(paginatedResponse(enriched, total, page, limit));
       return;
@@ -171,6 +181,14 @@ export async function approveUser(
         });
 
       await syncRelatedStatus(tx, row.role, row.id, "ACTIVE");
+
+      // Approving a rider implies their documents were reviewed.
+      if (row.role === "RIDER") {
+        await tx
+          .update(riders)
+          .set({ documentsStatus: "VERIFIED", documentsRejectionReason: null })
+          .where(eq(riders.userId, targetId));
+      }
 
       await tx.insert(adminEvents).values({
         adminId: req.user.id,
@@ -245,6 +263,61 @@ export async function rejectUser(
     });
 
     res.json(updated);
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─────────────────────────────────────────────────────────
+// POST /api/admin/riders/:id/reject-documents
+//
+// Ask a rider to re-upload their KYC documents (bad photo,
+// expired licence, mismatch) without rejecting the account.
+// :id is the rider's USER id. Sets documentsStatus REJECTED
+// with a reason; the rider can resubmit.
+// ─────────────────────────────────────────────────────────
+export async function rejectRiderDocuments(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const targetUserId = parseUUID(req.params.id as string, "user ID");
+    const reason =
+      typeof req.body?.reason === "string" && req.body.reason.trim()
+        ? req.body.reason.trim().slice(0, 300)
+        : "Documents need to be re-uploaded (unclear, expired, or mismatched).";
+
+    const [rider] = await db
+      .select({ id: riders.id })
+      .from(riders)
+      .where(eq(riders.userId, targetUserId))
+      .limit(1);
+    if (!rider) {
+      throw new BadRequestError("Rider not found", "ERR_RIDER_NOT_FOUND");
+    }
+
+    await db
+      .update(riders)
+      .set({ documentsStatus: "REJECTED", documentsRejectionReason: reason })
+      .where(eq(riders.id, rider.id));
+
+    await db.insert(adminEvents).values({
+      adminId: req.user.id,
+      action: "REJECT_RIDER_DOCUMENTS",
+      targetType: "USER",
+      targetId: targetUserId,
+      details: { reason },
+    });
+
+    notifyUserAsync(
+      targetUserId,
+      "Documents need attention",
+      reason,
+      { type: "DOCUMENTS_REJECTED" },
+    );
+
+    res.json({ ok: true, documentsStatus: "REJECTED", reason });
   } catch (err) {
     next(err);
   }

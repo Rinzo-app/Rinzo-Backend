@@ -298,7 +298,26 @@ log("Negative: PENDING rider cannot toggle availability (403)");
   );
 }
 
-log("Admin approves rider → rider entity ACTIVE");
+log("Rider submits KYC documents → documentsStatus SUBMITTED");
+{
+  const { status, body } = await api("PATCH", "/api/rider/documents", riderToken, {
+    dlImageUrl: "https://example.com/e2e/dl.jpg",
+    rcImageUrl: "https://example.com/e2e/rc.jpg",
+    selfieUrl: "https://example.com/e2e/selfie.jpg",
+  });
+  assert(status === 200, `submit documents → ${status}: ${JSON.stringify(body)}`);
+  const { body: profile } = await api("GET", "/api/rider/profile", riderToken);
+  assert(
+    profile.documentsStatus === "SUBMITTED",
+    `documentsStatus should be SUBMITTED, got ${profile.documentsStatus}`,
+  );
+  assert(
+    profile.dlImageUrl === "https://example.com/e2e/dl.jpg",
+    "dlImageUrl not persisted",
+  );
+}
+
+log("Admin approves rider → rider entity ACTIVE + documents VERIFIED");
 {
   const { body: pending } = await api(
     "GET",
@@ -307,10 +326,18 @@ log("Admin approves rider → rider entity ACTIVE");
   );
   const riderRow = (pending.data ?? []).find((u: any) => u.email === EMAILS.rider);
   assert(riderRow, "rider not found in admin PENDING list");
+  assert(
+    riderRow.documentsStatus === "SUBMITTED",
+    `admin list should show documentsStatus SUBMITTED, got ${riderRow.documentsStatus}`,
+  );
   const { status } = await api("POST", `/api/admin/users/${riderRow.id}/approve`, adminToken);
   assert(status === 200, `approve rider → ${status}`);
   const { body: profile } = await api("GET", "/api/rider/profile", riderToken);
   assert(profile.status === "ACTIVE", `rider entity should be ACTIVE, got ${profile.status}`);
+  assert(
+    profile.documentsStatus === "VERIFIED",
+    `documentsStatus should be VERIFIED after approval, got ${profile.documentsStatus}`,
+  );
 }
 
 log("Rider sends location + goes available");

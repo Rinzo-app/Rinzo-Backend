@@ -7,6 +7,7 @@ import {
   listUsers,
   approveUser,
   rejectUser,
+  rejectRiderDocuments,
   suspendUser,
   getUserImpact,
 } from "./admin-users.handler.js";
@@ -56,6 +57,13 @@ adminRouter.post(
   requireAuth,
   requireRole("ADMIN"),
   authed(rejectUser),
+);
+
+adminRouter.post(
+  "/riders/:id/reject-documents",
+  requireAuth,
+  requireRole("ADMIN"),
+  authed(rejectRiderDocuments),
 );
 
 adminRouter.post(

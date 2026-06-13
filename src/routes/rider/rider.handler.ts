@@ -47,6 +47,11 @@ export async function getRiderProfile(
         vehicleType: riders.vehicleType,
         vehicleNumber: riders.vehicleNumber,
         licenseNumber: riders.licenseNumber,
+        dlImageUrl: riders.dlImageUrl,
+        rcImageUrl: riders.rcImageUrl,
+        selfieUrl: riders.selfieUrl,
+        documentsStatus: riders.documentsStatus,
+        documentsRejectionReason: riders.documentsRejectionReason,
         riderStatus: riders.status,
         isAvailable: riders.isAvailable,
       })
@@ -98,9 +103,70 @@ export async function getRiderProfile(
       vehicleType: rider.vehicleType,
       vehicleNumber: rider.vehicleNumber ?? "",
       licenseNumber: rider.licenseNumber ?? "",
+      dlImageUrl: rider.dlImageUrl ?? null,
+      rcImageUrl: rider.rcImageUrl ?? null,
+      selfieUrl: rider.selfieUrl ?? null,
+      documentsStatus: rider.documentsStatus,
+      documentsRejectionReason: rider.documentsRejectionReason ?? null,
       availability: rider.isAvailable ? "AVAILABLE" : "OFFLINE",
       joinedDate: user?.createdAt?.toISOString() ?? new Date().toISOString(),
       totalDeliveries: total,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─────────────────────────────────────────────────────────
+// PATCH /api/rider/documents
+// Rider submits KYC document image URLs (already uploaded to
+// Firebase Storage by the client). Sets status to SUBMITTED for
+// admin review and clears any prior rejection.
+// ─────────────────────────────────────────────────────────
+
+const documentsSchema = z
+  .object({
+    dlImageUrl: z.string().url().max(1000).optional(),
+    rcImageUrl: z.string().url().max(1000).optional(),
+    selfieUrl: z.string().url().max(1000).optional(),
+  })
+  .refine(
+    (b) => b.dlImageUrl || b.rcImageUrl || b.selfieUrl,
+    { message: "Provide at least one document image" },
+  );
+
+export async function submitDocuments(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const parsed = documentsSchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw new BadRequestError(
+        parsed.error.issues.map((i) => i.message).join("; "),
+      );
+    }
+
+    const rider = await getRiderForUser(req.user.id);
+
+    const [updated] = await db
+      .update(riders)
+      .set({
+        ...(parsed.data.dlImageUrl !== undefined ? { dlImageUrl: parsed.data.dlImageUrl } : {}),
+        ...(parsed.data.rcImageUrl !== undefined ? { rcImageUrl: parsed.data.rcImageUrl } : {}),
+        ...(parsed.data.selfieUrl !== undefined ? { selfieUrl: parsed.data.selfieUrl } : {}),
+        documentsStatus: "SUBMITTED",
+        documentsRejectionReason: null,
+      })
+      .where(eq(riders.id, rider.id))
+      .returning();
+
+    res.status(200).json({
+      dlImageUrl: updated.dlImageUrl,
+      rcImageUrl: updated.rcImageUrl,
+      selfieUrl: updated.selfieUrl,
+      documentsStatus: updated.documentsStatus,
     });
   } catch (err) {
     next(err);

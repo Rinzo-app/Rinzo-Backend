@@ -3,7 +3,7 @@ import { requireAuth } from "../../middleware/require-auth.js";
 import { requireRole } from "../../middleware/require-role.js";
 import { requireApprovedRider } from "../../middleware/require-approved-rider.js";
 import { authed } from "../../lib/typed-handler.js";
-import { getRiderProfile, updateRiderProfile, toggleAvailability, updateLocation, acceptOffer, declineOffer, pickupOrder, dropoffOrder, deliverOrder, collectCash } from "./rider.handler.js";
+import { getRiderProfile, updateRiderProfile, submitDocuments, toggleAvailability, updateLocation, acceptOffer, declineOffer, pickupOrder, dropoffOrder, deliverOrder, collectCash } from "./rider.handler.js";
 import { getRiderEarnings } from "./rider-earnings.handler.js";
 import { listRiderOrders } from "../orders/orders.read.js";
 
@@ -25,6 +25,15 @@ riderRouter.patch(
   requireAuth,
   requireRole("RIDER"),
   authed(updateRiderProfile),
+);
+
+// Document submission — allowed for PENDING riders (it's part of
+// completing their profile before approval).
+riderRouter.patch(
+  "/documents",
+  requireAuth,
+  requireRole("RIDER"),
+  authed(submitDocuments),
 );
 
 riderRouter.get(

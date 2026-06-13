@@ -5,6 +5,7 @@ export {
   shopStatusEnum,
   pricingTypeEnum,
   riderStatusEnum,
+  documentsStatusEnum,
   orderStatusEnum,
   rejectionReasonEnum,
   paymentMethodEnum,

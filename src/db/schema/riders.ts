@@ -1,5 +1,5 @@
-import { pgTable, uuid, varchar, boolean, doublePrecision, timestamp } from "drizzle-orm/pg-core";
-import { riderStatusEnum } from "./enums.js";
+import { pgTable, uuid, varchar, boolean, doublePrecision, timestamp, text } from "drizzle-orm/pg-core";
+import { riderStatusEnum, documentsStatusEnum } from "./enums.js";
 import { users } from "./users.js";
 
 export const riders = pgTable("riders", {
@@ -13,6 +13,13 @@ export const riders = pgTable("riders", {
   licenseNumber: varchar("license_number", { length: 30 }).notNull().default(""),
   status: riderStatusEnum("status").notNull().default("PENDING"),
   isAvailable: boolean("is_available").notNull().default(false),
+
+  // ── KYC documents (image URLs in Firebase Storage) ──────
+  dlImageUrl: text("dl_image_url"),
+  rcImageUrl: text("rc_image_url"),
+  selfieUrl: text("selfie_url"),
+  documentsStatus: documentsStatusEnum("documents_status").notNull().default("NOT_SUBMITTED"),
+  documentsRejectionReason: text("documents_rejection_reason"),
 
   // ── Geo-location (nullable — rider may not have sent location yet) ──
   lastLat: doublePrecision("last_lat"),
