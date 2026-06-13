@@ -416,9 +416,39 @@ log("Out-of-range pickup is rejected (beyond the shop's service radius)");
   );
 }
 
-log("Customer places an order (COD, with idempotency key)");
+log("Negative: a pickup slot in the past is rejected");
+{
+  const { status, body } = await api("POST", "/api/orders", customerToken, {
+    shopId,
+    items: [{ serviceId, quantity: 1 }],
+    pickupAddress: "12 Customer Lane, Bengaluru",
+    deliveryAddress: "12 Customer Lane, Bengaluru",
+    pickupLat: 12.97,
+    pickupLng: 77.593,
+    pickupDate: "2020-01-01",
+    pickupSlot: "8 - 10 AM",
+  });
+  assert(status === 400, `past pickup should be 400, got ${status}: ${JSON.stringify(body)}`);
+
+  // An unknown slot label is rejected too
+  const bad = await api("POST", "/api/orders", customerToken, {
+    shopId,
+    items: [{ serviceId, quantity: 1 }],
+    pickupAddress: "12 Customer Lane, Bengaluru",
+    deliveryAddress: "12 Customer Lane, Bengaluru",
+    pickupDate: "2099-01-01",
+    pickupSlot: "3 - 4 AM",
+  });
+  assert(bad.status === 400, `unknown slot should be 400, got ${bad.status}`);
+}
+
+log("Customer places an order (COD, with idempotency key + valid future slot)");
 let orderId: string;
 const orderKey = `e2e-key-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+// Tomorrow's date in IST — a guaranteed-future pickup slot.
+const istTomorrow = new Date(Date.now() + 24 * 3600 * 1000 + 330 * 60 * 1000)
+  .toISOString()
+  .split("T")[0];
 {
   const { status, body } = await api("POST", "/api/orders", customerToken, {
     shopId,
@@ -427,6 +457,8 @@ const orderKey = `e2e-key-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     deliveryAddress: "12 Customer Lane, Bengaluru",
     pickupLat: 12.97,
     pickupLng: 77.593,
+    pickupDate: istTomorrow,
+    pickupSlot: "8 - 10 AM",
     idempotencyKey: orderKey,
   });
   assert(status === 201, `create order → ${status}: ${JSON.stringify(body)}`);
