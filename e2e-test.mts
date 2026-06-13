@@ -186,7 +186,8 @@ await cleanupFirebase();
 
 log("Create Firebase test users (owner, rider, customer)");
 for (const email of Object.values(EMAILS)) {
-  await firebaseAuth.createUser({ email, password: PW });
+  // emailVerified so the email-verification gate (order/shop/availability) passes.
+  await firebaseAuth.createUser({ email, password: PW, emailVerified: true });
 }
 
 log("Sign in admin + test users");

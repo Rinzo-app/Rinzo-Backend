@@ -2,6 +2,7 @@ import { Router } from "express";
 import { requireAuth } from "../../middleware/require-auth.js";
 import { requireRole } from "../../middleware/require-role.js";
 import { requireApprovedRider } from "../../middleware/require-approved-rider.js";
+import { requireEmailVerified } from "../../middleware/require-email-verified.js";
 import { authed } from "../../lib/typed-handler.js";
 import { getRiderProfile, updateRiderProfile, submitDocuments, toggleAvailability, updateLocation, acceptOffer, declineOffer, pickupOrder, dropoffOrder, deliverOrder, collectCash } from "./rider.handler.js";
 import { getRiderEarnings } from "./rider-earnings.handler.js";
@@ -49,6 +50,7 @@ riderRouter.post(
   requireAuth,
   requireRole("RIDER"),
   requireApprovedRider(),
+  requireEmailVerified,
   authed(toggleAvailability),
 );
 

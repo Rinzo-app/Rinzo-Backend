@@ -5,6 +5,7 @@ import { users } from "../../db/schema/users.js";
 import { riders } from "../../db/schema/riders.js";
 import { shops } from "../../db/schema/shops.js";
 import { orders } from "../../db/schema/orders.js";
+import { payments } from "../../db/schema/payments.js";
 import { addresses } from "../../db/schema/addresses.js";
 import { favorites } from "../../db/schema/favorites.js";
 import { pushTokens } from "../../db/schema/push-tokens.js";
@@ -74,6 +75,36 @@ export async function deleteAccount(
         "You have orders in progress. Please wait for them to complete or cancel them before deleting your account.",
         "ERR_ACTIVE_ORDERS",
       );
+    }
+
+    // A rider holding collected COD cash owes money to the platform/shops —
+    // block deletion until it's settled (DELIVERED orders are terminal, so
+    // the active-orders check above wouldn't catch this).
+    if (role === "RIDER") {
+      const [rider] = await db
+        .select({ id: riders.id })
+        .from(riders)
+        .where(eq(riders.userId, userId))
+        .limit(1);
+      if (rider) {
+        const [{ cash }] = await db
+          .select({ cash: sql<number>`coalesce(sum(${payments.amount}), 0)::int` })
+          .from(payments)
+          .innerJoin(orders, eq(orders.id, payments.orderId))
+          .where(
+            and(
+              eq(payments.status, "COLLECTED"),
+              eq(payments.method, "COD"),
+              eq(orders.riderId, rider.id),
+            ),
+          );
+        if (cash > 0) {
+          throw new ConflictError(
+            `You're still holding ₹${(cash / 100).toFixed(0)} in collected cash. Please hand it over and have it settled before deleting your account.`,
+            "ERR_UNSETTLED_CASH",
+          );
+        }
+      }
     }
 
     // Grab the Firebase UID before we null it out.

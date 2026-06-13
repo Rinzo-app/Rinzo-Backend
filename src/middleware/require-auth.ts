@@ -22,24 +22,26 @@ import type { AuthUser } from "../lib/types.js";
 const IS_DEV = process.env.NODE_ENV === "development";
 const ADMIN_JWT_SECRET = process.env.ADMIN_JWT_SECRET || "";
 
-/** Load a user row by primary key and return an AuthUser. */
-async function loadUserById(id: string): Promise<AuthUser | null> {
+type LoadedUser = Omit<AuthUser, "emailVerified">;
+
+/** Load a user row by primary key. */
+async function loadUserById(id: string): Promise<LoadedUser | null> {
   const [user] = await db
     .select({ id: users.id, role: users.role, status: users.status })
     .from(users)
     .where(eq(users.id, id))
     .limit(1);
-  return (user as AuthUser) ?? null;
+  return (user as LoadedUser) ?? null;
 }
 
-/** Load a user row by firebase_uid and return an AuthUser. */
-async function loadUserByFirebaseUid(uid: string): Promise<AuthUser | null> {
+/** Load a user row by firebase_uid. */
+async function loadUserByFirebaseUid(uid: string): Promise<LoadedUser | null> {
   const [user] = await db
     .select({ id: users.id, role: users.role, status: users.status })
     .from(users)
     .where(eq(users.firebaseUid, uid))
     .limit(1);
-  return (user as AuthUser) ?? null;
+  return (user as LoadedUser) ?? null;
 }
 
 export async function requireAuth(
@@ -65,7 +67,7 @@ export async function requireAuth(
     if (IS_DEV && devUserId) {
       const user = await loadUserById(devUserId);
       if (!user) throw new UnauthorizedError("Dev user not found");
-      req.user = user;
+      req.user = { ...user, emailVerified: true };
       return checkSuspended(req, next);
     }
 
@@ -87,7 +89,7 @@ export async function requireAuth(
         if (userId) {
           const user = await loadUserById(userId);
           if (user && user.role === "ADMIN") {
-            req.user = user;
+            req.user = { ...user, emailVerified: true };
             return next(); // Admins are never suspended-checked
           }
         }
@@ -113,7 +115,7 @@ export async function requireAuth(
       );
     }
 
-    req.user = user;
+    req.user = { ...user, emailVerified: decoded.email_verified === true };
     return checkSuspended(req, next);
   } catch (err) {
     next(err);

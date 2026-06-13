@@ -11,6 +11,8 @@ export interface AuthUser {
   role: UserRole;
   /** users.status */
   status: "PENDING" | "ACTIVE" | "SUSPENDED";
+  /** Firebase token's email_verified claim (true for admin/dev paths). */
+  emailVerified: boolean;
 }
 
 // ── Extended Request carrying the authenticated user ───

@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { requireAuth } from "../../middleware/require-auth.js";
 import { requireRole } from "../../middleware/require-role.js";
+import { requireEmailVerified } from "../../middleware/require-email-verified.js";
 import { authed } from "../../lib/typed-handler.js";
 import { createOrder, cancelOrder, acceptOrder, rejectOrder, markReady, weighOrder, approveAdjustment, quoteOrder, startPayment, checkPaymentStatus } from "./orders.handler.js";
 import { getOrderById, getOrderEvents } from "./orders.read.js";
@@ -31,6 +32,7 @@ ordersRouter.post(
   "/",
   requireAuth,
   requireRole("CUSTOMER"),
+  requireEmailVerified,
   authed(createOrder),
 );
 

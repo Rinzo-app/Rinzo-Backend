@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { requireAuth } from "../../middleware/require-auth.js";
 import { requireRole } from "../../middleware/require-role.js";
+import { requireEmailVerified } from "../../middleware/require-email-verified.js";
 import { authed } from "../../lib/typed-handler.js";
 import { listShopOrders } from "../orders/orders.read.js";
 import { getShopEarnings } from "./shop-earnings.handler.js";
@@ -20,6 +21,7 @@ shopRouter.post(
   "/",
   requireAuth,
   requireRole("SHOP_OWNER"),
+  requireEmailVerified,
   authed(createShop),
 );
 

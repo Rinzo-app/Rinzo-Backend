@@ -180,7 +180,8 @@ await cleanupFirebase();
 
 step("Provision victim + attacker accounts");
 for (const email of Object.values(EMAILS)) {
-  await firebaseAuth.createUser({ email, password: PW });
+  // emailVerified so the verification gate doesn't block the happy paths.
+  await firebaseAuth.createUser({ email, password: PW, emailVerified: true });
 }
 const adminToken = await signIn(ADMIN_EMAIL, ADMIN_PASSWORD);
 const t = {
@@ -391,7 +392,30 @@ step("Admin settings");
   check(r.status === 400, `out-of-range commission rejected (got ${r.status})`);
 }
 
-// ── 8. Account deletion ──────────────────────────────────
+// ── 8. Email-verification gate ───────────────────────────
+step("Email-verification gate");
+{
+  // Flip vCustomer to unverified, re-sign-in to get a token without the
+  // claim, and confirm order placement is blocked. Then restore.
+  const u = await firebaseAuth!.getUserByEmail(EMAILS.vCustomer);
+  await firebaseAuth!.updateUser(u.uid, { emailVerified: false });
+  const staleToken = await signIn(EMAILS.vCustomer, PW);
+  const r = await api("POST", "/api/orders", staleToken, {
+    shopId: vShopId,
+    items: [{ serviceId: vServiceId, quantity: 1 }],
+    pickupAddress: "1 Vic St, Bengaluru",
+    deliveryAddress: "1 Vic St, Bengaluru",
+    pickupLat: 12.9716,
+    pickupLng: 77.5946,
+  });
+  check(
+    r.status === 403 && r.body.code === "ERR_EMAIL_NOT_VERIFIED",
+    `unverified customer can't place order → 403 (got ${r.status}: ${r.body.code})`,
+  );
+  await firebaseAuth!.updateUser(u.uid, { emailVerified: true });
+}
+
+// ── 9. Account deletion ──────────────────────────────────
 step("Account deletion");
 {
   // vCustomer has an in-flight order → deletion blocked
