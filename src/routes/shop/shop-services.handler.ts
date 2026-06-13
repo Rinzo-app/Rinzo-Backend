@@ -11,6 +11,7 @@ import {
   NotFoundError,
   ForbiddenError,
 } from "../../lib/errors.js";
+import { storageImageUrl } from "../../lib/validate-image-url.js";
 
 // ── Helper: resolve first shop owned by user ─────────────
 
@@ -37,7 +38,7 @@ const createServiceBody = z.object({
     .optional()
     .default("PER_KG"),
   isActive: z.boolean().optional().default(true),
-  imageUrl: z.string().url().max(1000).nullable().optional(),
+  imageUrl: storageImageUrl.nullable().optional(),
 });
 
 const updateServiceBody = z.object({
@@ -45,7 +46,7 @@ const updateServiceBody = z.object({
   price: z.number().int().positive().max(100000).optional(),
   pricingType: z.enum(["PER_KG", "PER_ITEM"]).optional(),
   isActive: z.boolean().optional(),
-  imageUrl: z.string().url().max(1000).nullable().optional(),
+  imageUrl: storageImageUrl.nullable().optional(),
 });
 
 // ──────────────────────────────────────────────────────────

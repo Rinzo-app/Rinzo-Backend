@@ -5,6 +5,7 @@ import { db } from "../../db/client.js";
 import { shops } from "../../db/schema/shops.js";
 import type { AuthenticatedRequest } from "../../lib/types.js";
 import { BadRequestError, ConflictError, NotFoundError } from "../../lib/errors.js";
+import { storageImageUrl } from "../../lib/validate-image-url.js";
 
 // ── Helper: resolve first shop owned by user ─────────────
 
@@ -41,7 +42,7 @@ const updateSettingsBody = z.object({
   dailyCapacity: z.number().int().positive().optional(),
   autoRejectEnabled: z.boolean().optional(),
   serviceRadiusKm: z.number().int().min(1).max(50).optional(),
-  imageUrl: z.string().url().max(1000).nullable().optional(),
+  imageUrl: storageImageUrl.nullable().optional(),
 });
 
 // ── Zod schema for shop creation ─────────────────────────

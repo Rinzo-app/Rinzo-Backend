@@ -269,13 +269,13 @@ let serviceId: string;
     price: 5000,
     pricingType: "PER_KG",
     isActive: true,
-    imageUrl: "https://example.com/e2e/service.jpg",
+    imageUrl: "https://firebasestorage.googleapis.com/v0/b/rinzo-prod-54e65.firebasestorage.app/o/e2e%2Fservice.jpg?alt=media",
   });
   assert(status === 201 || status === 200, `create service → ${status}: ${JSON.stringify(body)}`);
   serviceId = body.id;
   assert(serviceId, "service id missing");
   assert(
-    body.imageUrl === "https://example.com/e2e/service.jpg",
+    body.imageUrl === "https://firebasestorage.googleapis.com/v0/b/rinzo-prod-54e65.firebasestorage.app/o/e2e%2Fservice.jpg?alt=media",
     "service imageUrl not persisted",
   );
 }
@@ -283,10 +283,10 @@ let serviceId: string;
 log("Owner sets a shop storefront photo");
 {
   const { status, body } = await api("PATCH", "/api/shop/settings", ownerToken, {
-    imageUrl: "https://example.com/e2e/shop.jpg",
+    imageUrl: "https://firebasestorage.googleapis.com/v0/b/rinzo-prod-54e65.firebasestorage.app/o/e2e%2Fshop.jpg?alt=media",
   });
   assert(status === 200, `set shop image → ${status}: ${JSON.stringify(body)}`);
-  assert(body.imageUrl === "https://example.com/e2e/shop.jpg", "shop imageUrl not persisted");
+  assert(body.imageUrl === "https://firebasestorage.googleapis.com/v0/b/rinzo-prod-54e65.firebasestorage.app/o/e2e%2Fshop.jpg?alt=media", "shop imageUrl not persisted");
 }
 
 // ── Rider onboarding ──────────────────────────────────────
@@ -315,9 +315,9 @@ log("Negative: PENDING rider cannot toggle availability (403)");
 log("Rider submits KYC documents → documentsStatus SUBMITTED");
 {
   const { status, body } = await api("PATCH", "/api/rider/documents", riderToken, {
-    dlImageUrl: "https://example.com/e2e/dl.jpg",
-    rcImageUrl: "https://example.com/e2e/rc.jpg",
-    selfieUrl: "https://example.com/e2e/selfie.jpg",
+    dlImageUrl: "https://firebasestorage.googleapis.com/v0/b/rinzo-prod-54e65.firebasestorage.app/o/e2e%2Fdl.jpg?alt=media",
+    rcImageUrl: "https://firebasestorage.googleapis.com/v0/b/rinzo-prod-54e65.firebasestorage.app/o/e2e%2Frc.jpg?alt=media",
+    selfieUrl: "https://firebasestorage.googleapis.com/v0/b/rinzo-prod-54e65.firebasestorage.app/o/e2e%2Fselfie.jpg?alt=media",
   });
   assert(status === 200, `submit documents → ${status}: ${JSON.stringify(body)}`);
   const { body: profile } = await api("GET", "/api/rider/profile", riderToken);
@@ -326,7 +326,7 @@ log("Rider submits KYC documents → documentsStatus SUBMITTED");
     `documentsStatus should be SUBMITTED, got ${profile.documentsStatus}`,
   );
   assert(
-    profile.dlImageUrl === "https://example.com/e2e/dl.jpg",
+    profile.dlImageUrl === "https://firebasestorage.googleapis.com/v0/b/rinzo-prod-54e65.firebasestorage.app/o/e2e%2Fdl.jpg?alt=media",
     "dlImageUrl not persisted",
   );
 }
@@ -570,16 +570,16 @@ log("Rider accepts the delivery offer → OUT_FOR_DELIVERY");
 log("Rider delivers (with proof photo) → DELIVERED");
 {
   const { status } = await api("POST", `/api/rider/orders/${orderId}/deliver`, riderToken, {
-    deliveryProofUrl: "https://example.com/e2e/proof.jpg",
+    deliveryProofUrl: "https://firebasestorage.googleapis.com/v0/b/rinzo-prod-54e65.firebasestorage.app/o/e2e%2Fproof.jpg?alt=media",
   });
   assert(status === 200, `deliver → ${status}`);
   // Customer sees the proof + the shop photo on the order
   const { body: ord } = await api("GET", `/api/orders/${orderId}`, customerToken);
   assert(
-    ord.deliveryProofUrl === "https://example.com/e2e/proof.jpg",
+    ord.deliveryProofUrl === "https://firebasestorage.googleapis.com/v0/b/rinzo-prod-54e65.firebasestorage.app/o/e2e%2Fproof.jpg?alt=media",
     "deliveryProofUrl not saved on order",
   );
-  assert(ord.shopImageUrl === "https://example.com/e2e/shop.jpg", "shopImageUrl missing on order");
+  assert(ord.shopImageUrl === "https://firebasestorage.googleapis.com/v0/b/rinzo-prod-54e65.firebasestorage.app/o/e2e%2Fshop.jpg?alt=media", "shopImageUrl missing on order");
   assert(typeof ord.riderName === "string" && ord.riderName.length > 0, "riderName missing on order");
 }
 

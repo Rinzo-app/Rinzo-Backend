@@ -894,13 +894,8 @@ export async function weighOrder(
     const orderId = parseUUID(req.params.id as string, "order ID");
     const ownerId = req.user.id;
 
-    const parsed = weighSchema.safeParse(req.body);
-    if (!parsed.success) {
-      throw new BadRequestError(
-        parsed.error.issues.map((i) => i.message).join("; "),
-      );
-    }
-
+    // Authorize BEFORE validating the body so a non-owner can't probe
+    // input-validation behaviour (consistent 403, no info leak).
     const [order] = await db
       .select()
       .from(orders)
@@ -919,6 +914,13 @@ export async function weighOrder(
       throw new ForbiddenError(
         "You do not own the shop this order belongs to",
         "ERR_NOT_SHOP_OWNER",
+      );
+    }
+
+    const parsed = weighSchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw new BadRequestError(
+        parsed.error.issues.map((i) => i.message).join("; "),
       );
     }
 

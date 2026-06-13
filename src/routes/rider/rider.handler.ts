@@ -17,6 +17,7 @@ import {
   ConflictError,
 } from "../../lib/errors.js";
 import { parseUUID } from "../../lib/validate-uuid.js";
+import { storageImageUrl, isAllowedStorageUrl } from "../../lib/validate-image-url.js";
 import type { OrderStatus } from "../../lib/order-machine.js";
 import { assertTransition } from "../../lib/order-machine.js";
 import { resolveRiderLegDistanceKm } from "../../lib/rider-distance.js";
@@ -126,9 +127,9 @@ export async function getRiderProfile(
 
 const documentsSchema = z
   .object({
-    dlImageUrl: z.string().url().max(1000).optional(),
-    rcImageUrl: z.string().url().max(1000).optional(),
-    selfieUrl: z.string().url().max(1000).optional(),
+    dlImageUrl: storageImageUrl.optional(),
+    rcImageUrl: storageImageUrl.optional(),
+    selfieUrl: storageImageUrl.optional(),
   })
   .refine(
     (b) => b.dlImageUrl || b.rcImageUrl || b.selfieUrl,
@@ -637,10 +638,15 @@ export async function deliverOrder(
     const order = await getOrderForRider(orderId, rider.id);
 
     // ── Optional proof-of-delivery photo ────────────────
+    // Only accept a download URL for our own Storage bucket; an
+    // invalid/foreign URL is ignored rather than failing the handover.
+    const rawProof =
+      typeof req.body?.deliveryProofUrl === "string"
+        ? req.body.deliveryProofUrl.trim()
+        : "";
     const proofUrl =
-      typeof req.body?.deliveryProofUrl === "string" &&
-      req.body.deliveryProofUrl.trim()
-        ? req.body.deliveryProofUrl.trim().slice(0, 1000)
+      rawProof && rawProof.length <= 1000 && isAllowedStorageUrl(rawProof)
+        ? rawProof
         : null;
 
     // ── Validate transition ─────────────────────────────
