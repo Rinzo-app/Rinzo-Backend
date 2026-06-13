@@ -102,6 +102,7 @@ export async function getOrderById(
         name: shops.name,
         phone: shops.phone,
         address: shops.address,
+        imageUrl: shops.imageUrl,
       })
       .from(shops)
       .where(eq(shops.id, order.shopId))
@@ -112,6 +113,28 @@ export async function getOrderById(
       .from(users)
       .where(eq(users.id, order.customerId))
       .limit(1);
+
+    // ── Assigned rider's name + selfie (shown to the customer
+    //    on active orders for trust/safety) ─────────────────
+    let riderName: string | null = null;
+    let riderPhotoUrl: string | null = null;
+    if (order.riderId) {
+      const [riderRow] = await db
+        .select({ userId: riders.userId, selfieUrl: riders.selfieUrl })
+        .from(riders)
+        .where(eq(riders.id, order.riderId))
+        .limit(1);
+      if (riderRow) {
+        riderPhotoUrl = riderRow.selfieUrl ?? null;
+        const [riderUser] = await db
+          .select({ name: users.name })
+          .from(users)
+          .where(eq(users.id, riderRow.userId))
+          .limit(1);
+        // First name only, for privacy
+        riderName = (riderUser?.name ?? "").split(" ")[0] || null;
+      }
+    }
 
     // Has this order already been reviewed?
     const [review] = await db
@@ -127,8 +150,11 @@ export async function getOrderById(
       shopName: shop?.name ?? null,
       shopPhone: shop?.phone ?? null,
       shopAddress: shop?.address ?? null,
+      shopImageUrl: shop?.imageUrl ?? null,
       customerName: customer?.name ?? null,
       customerPhone: customer?.phone ?? null,
+      riderName,
+      riderPhotoUrl,
       reviewRating: review?.rating ?? null,
     });
   } catch (err) {

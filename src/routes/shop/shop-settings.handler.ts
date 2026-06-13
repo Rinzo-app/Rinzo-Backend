@@ -41,6 +41,7 @@ const updateSettingsBody = z.object({
   dailyCapacity: z.number().int().positive().optional(),
   autoRejectEnabled: z.boolean().optional(),
   serviceRadiusKm: z.number().int().min(1).max(50).optional(),
+  imageUrl: z.string().url().max(1000).nullable().optional(),
 });
 
 // ── Zod schema for shop creation ─────────────────────────
@@ -148,6 +149,7 @@ export async function getSettings(
       dailyCapacity: shop.dailyCapacity,
       autoRejectEnabled: shop.autoRejectEnabled,
       serviceRadiusKm: shop.serviceRadiusKm,
+      imageUrl: shop.imageUrl,
     });
   } catch (err) {
     next(err);
@@ -185,6 +187,8 @@ export async function patchSettings(
       setFields.autoRejectEnabled = parsed.data.autoRejectEnabled;
     if (parsed.data.serviceRadiusKm !== undefined)
       setFields.serviceRadiusKm = parsed.data.serviceRadiusKm;
+    if (parsed.data.imageUrl !== undefined)
+      setFields.imageUrl = parsed.data.imageUrl;
 
     if (Object.keys(setFields).length === 0) {
       throw new BadRequestError("No fields to update");
@@ -208,6 +212,7 @@ export async function patchSettings(
       dailyCapacity: updated.dailyCapacity,
       autoRejectEnabled: updated.autoRejectEnabled,
       serviceRadiusKm: updated.serviceRadiusKm,
+      imageUrl: updated.imageUrl,
     });
   } catch (err) {
     next(err);

@@ -41,6 +41,8 @@ export const orders = pgTable("orders", {
   // from re-offers.
   offerExpiresAt: timestamp("offer_expires_at"),
   declinedRiderIds: jsonb("declined_rider_ids").notNull().default([]),
+  // Proof-of-delivery photo URL captured by the rider at handover
+  deliveryProofUrl: text("delivery_proof_url"),
   // Client-generated key to dedupe double-submissions (nullable;
   // Postgres unique indexes permit multiple NULLs)
   idempotencyKey: varchar("idempotency_key", { length: 64 }).unique(),

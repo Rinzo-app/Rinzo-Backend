@@ -636,6 +636,13 @@ export async function deliverOrder(
     const rider = await getRiderForUser(req.user.id);
     const order = await getOrderForRider(orderId, rider.id);
 
+    // ── Optional proof-of-delivery photo ────────────────
+    const proofUrl =
+      typeof req.body?.deliveryProofUrl === "string" &&
+      req.body.deliveryProofUrl.trim()
+        ? req.body.deliveryProofUrl.trim().slice(0, 1000)
+        : null;
+
     // ── Validate transition ─────────────────────────────
     assertTransition(
       order.status as OrderStatus,
@@ -650,6 +657,7 @@ export async function deliverOrder(
         .set({
           status: "DELIVERED",
           updatedAt: new Date(),
+          ...(proofUrl ? { deliveryProofUrl: proofUrl } : {}),
         })
         .where(and(eq(orders.id, orderId), eq(orders.status, order.status as OrderStatus)))
         .returning();

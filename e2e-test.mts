@@ -269,10 +269,24 @@ let serviceId: string;
     price: 5000,
     pricingType: "PER_KG",
     isActive: true,
+    imageUrl: "https://example.com/e2e/service.jpg",
   });
   assert(status === 201 || status === 200, `create service → ${status}: ${JSON.stringify(body)}`);
   serviceId = body.id;
   assert(serviceId, "service id missing");
+  assert(
+    body.imageUrl === "https://example.com/e2e/service.jpg",
+    "service imageUrl not persisted",
+  );
+}
+
+log("Owner sets a shop storefront photo");
+{
+  const { status, body } = await api("PATCH", "/api/shop/settings", ownerToken, {
+    imageUrl: "https://example.com/e2e/shop.jpg",
+  });
+  assert(status === 200, `set shop image → ${status}: ${JSON.stringify(body)}`);
+  assert(body.imageUrl === "https://example.com/e2e/shop.jpg", "shop imageUrl not persisted");
 }
 
 // ── Rider onboarding ──────────────────────────────────────
@@ -553,10 +567,20 @@ log("Rider accepts the delivery offer → OUT_FOR_DELIVERY");
   assert(!order.offerExpiresAt, "offerExpiresAt should clear on delivery accept");
 }
 
-log("Rider delivers → DELIVERED");
+log("Rider delivers (with proof photo) → DELIVERED");
 {
-  const { status } = await api("POST", `/api/rider/orders/${orderId}/deliver`, riderToken);
+  const { status } = await api("POST", `/api/rider/orders/${orderId}/deliver`, riderToken, {
+    deliveryProofUrl: "https://example.com/e2e/proof.jpg",
+  });
   assert(status === 200, `deliver → ${status}`);
+  // Customer sees the proof + the shop photo on the order
+  const { body: ord } = await api("GET", `/api/orders/${orderId}`, customerToken);
+  assert(
+    ord.deliveryProofUrl === "https://example.com/e2e/proof.jpg",
+    "deliveryProofUrl not saved on order",
+  );
+  assert(ord.shopImageUrl === "https://example.com/e2e/shop.jpg", "shopImageUrl missing on order");
+  assert(typeof ord.riderName === "string" && ord.riderName.length > 0, "riderName missing on order");
 }
 
 log("Customer reviews the delivered order → shop rating recomputed");

@@ -42,6 +42,7 @@ export async function listShops(
         latitude: shops.latitude,
         longitude: shops.longitude,
         isOpen: shops.isOpen,
+        imageUrl: shops.imageUrl,
         rating: shops.rating,
         totalRatings: shops.totalRatings,
         openTime: shops.openTime,
@@ -94,6 +95,7 @@ export async function getShopDetail(
         longitude: shops.longitude,
         isOpen: shops.isOpen,
         dailyCapacity: shops.dailyCapacity,
+        imageUrl: shops.imageUrl,
         rating: shops.rating,
         totalRatings: shops.totalRatings,
         openTime: shops.openTime,
@@ -154,6 +156,7 @@ export async function getShopServices(
         price: services.price,
         pricingType: services.pricingType,
         isActive: services.isActive,
+        imageUrl: services.imageUrl,
       })
       .from(services)
       .where(

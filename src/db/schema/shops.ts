@@ -27,6 +27,8 @@ export const shops = pgTable("shops", {
   autoRejectEnabled: boolean("auto_reject_enabled").notNull().default(false),
 
   // ── Display fields for Customer app ─────────────────────
+  // Storefront/cover photo shown on the customer browse list + detail
+  imageUrl: text("image_url"),
   rating: doublePrecision("rating").notNull().default(0),
   totalRatings: integer("total_ratings").notNull().default(0),
   openTime: varchar("open_time", { length: 10 }).notNull().default("08:00"),

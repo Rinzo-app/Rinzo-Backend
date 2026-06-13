@@ -37,6 +37,7 @@ const createServiceBody = z.object({
     .optional()
     .default("PER_KG"),
   isActive: z.boolean().optional().default(true),
+  imageUrl: z.string().url().max(1000).nullable().optional(),
 });
 
 const updateServiceBody = z.object({
@@ -44,6 +45,7 @@ const updateServiceBody = z.object({
   price: z.number().int().positive().max(100000).optional(),
   pricingType: z.enum(["PER_KG", "PER_ITEM"]).optional(),
   isActive: z.boolean().optional(),
+  imageUrl: z.string().url().max(1000).nullable().optional(),
 });
 
 // ──────────────────────────────────────────────────────────
@@ -65,6 +67,7 @@ export async function listServices(
         price: services.price,
         pricingType: services.pricingType,
         isActive: services.isActive,
+        imageUrl: services.imageUrl,
       })
       .from(services)
       .where(eq(services.shopId, shop.id));
@@ -102,6 +105,9 @@ export async function createService(
         price: parsed.data.price,
         pricingType: parsed.data.pricingType,
         isActive: parsed.data.isActive,
+        ...(parsed.data.imageUrl !== undefined
+          ? { imageUrl: parsed.data.imageUrl }
+          : {}),
       })
       .returning();
 
@@ -153,6 +159,8 @@ export async function updateService(
       setFields.pricingType = parsed.data.pricingType;
     if (parsed.data.isActive !== undefined)
       setFields.isActive = parsed.data.isActive;
+    if (parsed.data.imageUrl !== undefined)
+      setFields.imageUrl = parsed.data.imageUrl;
 
     if (Object.keys(setFields).length === 0) {
       throw new BadRequestError("No fields to update");
