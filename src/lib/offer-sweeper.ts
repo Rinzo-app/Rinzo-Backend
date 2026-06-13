@@ -2,7 +2,12 @@ import { and, eq, lt, isNull, inArray } from "drizzle-orm";
 import { db } from "../db/client.js";
 import { orders } from "../db/schema/orders.js";
 import { riders } from "../db/schema/riders.js";
-import { tryAutoAssignPickup, releasePickupOffer } from "./auto-assign.js";
+import {
+  tryAutoAssignPickup,
+  tryAutoAssignDelivery,
+  releasePickupOffer,
+  releaseDeliveryOffer,
+} from "./auto-assign.js";
 
 // ─────────────────────────────────────────────────────────
 // OFFER SWEEPER
@@ -36,12 +41,13 @@ async function sweepOnce(): Promise<void> {
       orderId: orders.id,
       riderId: orders.riderId,
       riderUserId: riders.userId,
+      status: orders.status,
     })
     .from(orders)
     .innerJoin(riders, eq(riders.id, orders.riderId))
     .where(
       and(
-        eq(orders.status, "PICKUP_OFFERED"),
+        inArray(orders.status, ["PICKUP_OFFERED", "DELIVERY_OFFERED"]),
         lt(orders.offerExpiresAt, new Date()),
       ),
     )
@@ -49,11 +55,15 @@ async function sweepOnce(): Promise<void> {
 
   for (const o of expired) {
     if (!o.riderId) continue;
-    await releasePickupOffer(o.orderId, o.riderId, o.riderUserId, "SYSTEM");
+    if (o.status === "DELIVERY_OFFERED") {
+      await releaseDeliveryOffer(o.orderId, o.riderId, o.riderUserId, "SYSTEM");
+    } else {
+      await releasePickupOffer(o.orderId, o.riderId, o.riderUserId, "SYSTEM");
+    }
   }
 
-  // ── 2. Pool retry — orders waiting for a rider ────────
-  const stale = await db
+  // ── 2. Pool retry — pickups waiting for a rider ───────
+  const stalePickup = await db
     .select({ id: orders.id })
     .from(orders)
     .where(
@@ -65,8 +75,25 @@ async function sweepOnce(): Promise<void> {
     )
     .limit(BATCH_LIMIT);
 
-  for (const o of stale) {
+  for (const o of stalePickup) {
     await tryAutoAssignPickup(o.id, { allowCycleReset: true });
+  }
+
+  // ── 3. Pool retry — deliveries waiting for a rider ────
+  const staleDelivery = await db
+    .select({ id: orders.id })
+    .from(orders)
+    .where(
+      and(
+        eq(orders.status, "READY"),
+        isNull(orders.riderId),
+        lt(orders.updatedAt, new Date(Date.now() - POOL_RETRY_AFTER_MS)),
+      ),
+    )
+    .limit(BATCH_LIMIT);
+
+  for (const o of staleDelivery) {
+    await tryAutoAssignDelivery(o.id, { allowCycleReset: true });
   }
 }
 

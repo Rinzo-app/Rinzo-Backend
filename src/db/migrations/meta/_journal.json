@@ -141,6 +141,13 @@
       "when": 1738972800019,
       "tag": "0019_add_service_radius",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1738972800020,
+      "tag": "0020_add_delivery_offered",
+      "breakpoints": true
     }
   ]
 }

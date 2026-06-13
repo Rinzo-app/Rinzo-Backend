@@ -509,11 +509,21 @@ log("Customer approves the adjusted price → total + payment update");
   );
 }
 
-log("Owner marks ready → auto-dispatch should move it to OUT_FOR_DELIVERY");
+log("Owner marks ready → delivery is OFFERED to a rider");
 {
   const { status } = await api("POST", `/api/orders/${orderId}/ready`, ownerToken);
   assert(status === 200, `ready → ${status}`);
-  await waitForStatus(orderId, ownerToken, "OUT_FOR_DELIVERY");
+  const order = await waitForStatus(orderId, ownerToken, "DELIVERY_OFFERED");
+  assert(order.riderId, "delivery offer should name a rider");
+  assert(order.offerExpiresAt, "delivery offer should have an expiry");
+}
+
+log("Rider accepts the delivery offer → OUT_FOR_DELIVERY");
+{
+  const { status, body } = await api("POST", `/api/rider/orders/${orderId}/accept`, riderToken);
+  assert(status === 200, `delivery accept → ${status}: ${JSON.stringify(body)}`);
+  const order = await waitForStatus(orderId, ownerToken, "OUT_FOR_DELIVERY");
+  assert(!order.offerExpiresAt, "offerExpiresAt should clear on delivery accept");
 }
 
 log("Rider delivers → DELIVERED");
@@ -614,7 +624,8 @@ log("Verify final order, full event trail, and rider earnings");
     "PICKED_UP_FROM_CUSTOMER",
     "AT_SHOP",
     "READY",
-    "OUT_FOR_DELIVERY",
+    "DELIVERY_OFFERED",   // system offered the delivery
+    "OUT_FOR_DELIVERY",   // rider accepted the delivery
     "DELIVERED",
   ];
   assert(

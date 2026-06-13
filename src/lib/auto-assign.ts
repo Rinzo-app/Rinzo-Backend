@@ -16,6 +16,7 @@ const RIDER_BUSY_STATUSES: OrderStatus[] = [
   "PICKUP_OFFERED",
   "PICKUP_ASSIGNED",
   "PICKED_UP_FROM_CUSTOMER",
+  "DELIVERY_OFFERED",
   "OUT_FOR_DELIVERY",
 ];
 
@@ -378,17 +379,17 @@ export async function releasePickupOffer(
 }
 
 /**
- * Try to auto-assign a rider for **delivery** after an order
- * transitions to READY.
+ * Offer the **delivery** to a rider after an order transitions to
+ * READY (or returns there after a decline / expiry). Prefers the
+ * rider who did the pickup (they have context) when they're still
+ * active and free, otherwise the ranked available pool — excluding
+ * riders who already declined this delivery. 60s window like pickup.
  *
- * If riderId is already set, reuse that rider and progress
- * directly to OUT_FOR_DELIVERY.
- * If riderId is null, find an available rider first.
- *
- * @returns The rider id if delivery was dispatched, or null.
+ * @returns The offered rider id, or null if none available.
  */
 export async function tryAutoAssignDelivery(
   orderId: string,
+  { allowCycleReset = false }: { allowCycleReset?: boolean } = {},
 ): Promise<string | null> {
   // Re-read order to get latest committed state
   const [order] = await db
@@ -398,6 +399,7 @@ export async function tryAutoAssignDelivery(
       status: orders.status,
       shopId: orders.shopId,
       customerId: orders.customerId,
+      declinedRiderIds: orders.declinedRiderIds,
     })
     .from(orders)
     .where(eq(orders.id, orderId))
@@ -405,7 +407,7 @@ export async function tryAutoAssignDelivery(
 
   if (!order) return null;
 
-  // Only act when order is in READY
+  // Only act when order is in READY (and not already offered)
   if (order.status !== "READY") return null;
 
   // Resolve shop coordinates for geo-ranking
@@ -423,12 +425,15 @@ export async function tryAutoAssignDelivery(
     shopLng = shop.longitude;
   }
 
-  // Resolve candidates: prefer the order's existing rider (they did
-  // the pickup) when they're still active and not on another leg —
-  // otherwise fall back to the ranked available pool.
+  const declined = Array.isArray(order.declinedRiderIds)
+    ? (order.declinedRiderIds as string[])
+    : [];
+
+  // Candidates: prefer the pickup rider (if active, free, not a
+  // decliner of this delivery), then the ranked available pool.
   let candidates: Array<{ id: string; userId: string }> = [];
 
-  if (order.riderId) {
+  if (order.riderId && !declined.includes(order.riderId)) {
     const [existingRider] = await db
       .select({ id: riders.id, userId: riders.userId, status: riders.status })
       .from(riders)
@@ -445,15 +450,20 @@ export async function tryAutoAssignDelivery(
   }
 
   if (candidates.length === 0) {
-    candidates = await findAvailableRiders(shopLat, shopLng);
+    candidates = await findAvailableRiders(shopLat, shopLng, 3, declined);
+  }
+
+  // Cycle reset (sweeper only): every available rider declined — reopen.
+  if (candidates.length === 0 && allowCycleReset && declined.length > 0) {
+    candidates = await findAvailableRiders(shopLat, shopLng, 3, []);
   }
   if (candidates.length === 0) return null;
 
   try {
-    assertTransition("READY", "OUT_FOR_DELIVERY", "SYSTEM");
+    assertTransition("READY", "DELIVERY_OFFERED", "SYSTEM");
 
     for (const rider of candidates) {
-      const assigned = await db.transaction(async (tx) => {
+      const offered = await db.transaction(async (tx) => {
         // Lock the rider row to serialise competing assignments
         await tx.execute(
           sql`SELECT id FROM riders WHERE id = ${rider.id} FOR UPDATE`,
@@ -477,8 +487,9 @@ export async function tryAutoAssignDelivery(
         await tx
           .update(orders)
           .set({
-            status: "OUT_FOR_DELIVERY",
+            status: "DELIVERY_OFFERED",
             riderId: rider.id,
+            offerExpiresAt: new Date(Date.now() + OFFER_WINDOW_MS),
             updatedAt: new Date(),
           })
           .where(eq(orders.id, orderId));
@@ -486,7 +497,7 @@ export async function tryAutoAssignDelivery(
         await tx.insert(orderEvents).values({
           orderId,
           fromStatus: "READY" as OrderStatus,
-          toStatus: "OUT_FOR_DELIVERY" as OrderStatus,
+          toStatus: "DELIVERY_OFFERED" as OrderStatus,
           actor: "SYSTEM",
           actorId: rider.userId,
         });
@@ -494,18 +505,12 @@ export async function tryAutoAssignDelivery(
         return true;
       });
 
-      if (assigned) {
+      if (offered) {
         notifyUserAsync(
           rider.userId,
-          "Delivery ready 🛵",
-          "Laundry is ready at the shop — time to deliver it.",
-          { type: "DELIVERY_ASSIGNED", orderId },
-        );
-        notifyUserAsync(
-          order.customerId,
-          "Out for delivery 🚚",
-          "Your laundry is on its way back to you.",
-          { type: "ORDER_OUT_FOR_DELIVERY", orderId },
+          "New delivery offer 🛵",
+          "Laundry is ready for delivery — accept it in the app within 60 seconds.",
+          { type: "DELIVERY_OFFERED", orderId },
         );
         return rider.id;
       }
@@ -516,5 +521,76 @@ export async function tryAutoAssignDelivery(
     // Non-fatal — order stays READY for manual dispatch
     logAutoAssignError("DELIVERY", orderId, err);
     return null;
+  }
+}
+
+/**
+ * Return an offered delivery to the pool (rider declined, or the
+ * offer expired), recording an explicit decliner, then cascade to
+ * the next candidate. Mirrors releasePickupOffer for the READY ⇄
+ * DELIVERY_OFFERED edge.
+ */
+export async function releaseDeliveryOffer(
+  orderId: string,
+  riderId: string,
+  riderUserId: string,
+  actor: "RIDER" | "SYSTEM",
+): Promise<boolean> {
+  try {
+    assertTransition("DELIVERY_OFFERED", "READY", actor);
+
+    const released = await db.transaction(async (tx) => {
+      const [fresh] = await tx
+        .select({
+          status: orders.status,
+          riderId: orders.riderId,
+          declinedRiderIds: orders.declinedRiderIds,
+        })
+        .from(orders)
+        .where(eq(orders.id, orderId))
+        .for("update")
+        .limit(1);
+
+      if (!fresh || fresh.status !== "DELIVERY_OFFERED" || fresh.riderId !== riderId) {
+        return false; // offer already resolved
+      }
+
+      const declined = Array.isArray(fresh.declinedRiderIds)
+        ? (fresh.declinedRiderIds as string[])
+        : [];
+      if (actor === "RIDER" && !declined.includes(riderId)) {
+        declined.push(riderId);
+      }
+
+      await tx
+        .update(orders)
+        .set({
+          status: "READY",
+          riderId: null,
+          offerExpiresAt: null,
+          declinedRiderIds: declined,
+          updatedAt: new Date(),
+        })
+        .where(eq(orders.id, orderId));
+
+      await tx.insert(orderEvents).values({
+        orderId,
+        fromStatus: "DELIVERY_OFFERED" as OrderStatus,
+        toStatus: "READY" as OrderStatus,
+        actor,
+        actorId: riderUserId,
+      });
+
+      return true;
+    });
+
+    if (released) {
+      await tryAutoAssignDelivery(orderId);
+    }
+
+    return released;
+  } catch (err) {
+    logAutoAssignError("DELIVERY_OFFER_RELEASE", orderId, err);
+    return false;
   }
 }

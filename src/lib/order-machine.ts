@@ -13,6 +13,7 @@ export type OrderStatus =
   | "PICKED_UP_FROM_CUSTOMER"
   | "AT_SHOP"
   | "READY"
+  | "DELIVERY_OFFERED"
   | "OUT_FOR_DELIVERY"
   | "DELIVERED"
   | "CANCELLED"
@@ -52,7 +53,10 @@ const TERMINAL_STATUSES: ReadonlySet<OrderStatus> = new Set([
 //  PICKUP_ASSIGNED → PICKED_UP_FROM_CUSTOMER   RIDER
 //  PICKED_UP_FROM_CUSTOMER → AT_SHOP   RIDER
 //  AT_SHOP → READY                     SHOP_OWNER
-//  READY → OUT_FOR_DELIVERY            SYSTEM (delivery dispatch)
+//  READY → DELIVERY_OFFERED            SYSTEM (offer to a rider)
+//  READY → OUT_FOR_DELIVERY            SYSTEM/ADMIN (direct/manual dispatch)
+//  DELIVERY_OFFERED → OUT_FOR_DELIVERY RIDER (accepts the delivery)
+//  DELIVERY_OFFERED → READY            RIDER (decline), SYSTEM (expiry)
 //  OUT_FOR_DELIVERY → DELIVERED        RIDER
 //
 //  ADMIN can perform ANY transition (bypasses map).
@@ -74,7 +78,10 @@ const rules: readonly TransitionRule[] = [
   { from: "PICKUP_ASSIGNED",          to: "PICKED_UP_FROM_CUSTOMER",  actors: new Set(["RIDER"]) },
   { from: "PICKED_UP_FROM_CUSTOMER",  to: "AT_SHOP",                  actors: new Set(["RIDER"]) },
   { from: "AT_SHOP",                  to: "READY",                    actors: new Set(["SHOP_OWNER"]) },
+  { from: "READY",                    to: "DELIVERY_OFFERED",         actors: new Set(["SYSTEM"]) },
   { from: "READY",                    to: "OUT_FOR_DELIVERY",         actors: new Set(["SYSTEM"]) },
+  { from: "DELIVERY_OFFERED",         to: "OUT_FOR_DELIVERY",         actors: new Set(["RIDER"]) },
+  { from: "DELIVERY_OFFERED",         to: "READY",                    actors: new Set(["RIDER", "SYSTEM"]) },
   { from: "OUT_FOR_DELIVERY",         to: "DELIVERED",                actors: new Set(["RIDER"]) },
 
   // ── Rejection (PLACED only) ──────────────────────────

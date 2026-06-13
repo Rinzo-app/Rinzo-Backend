@@ -20,7 +20,7 @@ import { parseUUID } from "../../lib/validate-uuid.js";
 import type { OrderStatus } from "../../lib/order-machine.js";
 import { assertTransition } from "../../lib/order-machine.js";
 import { resolveRiderLegDistanceKm } from "../../lib/rider-distance.js";
-import { releasePickupOffer } from "../../lib/auto-assign.js";
+import { releasePickupOffer, releaseDeliveryOffer } from "../../lib/auto-assign.js";
 import { bookCodCollection } from "../../lib/cod-collection.js";
 import { RIDER_PAYOUT_PER_KM } from "../../config/rider-payout.js";
 import { DELIVERY_RATE_PER_KM } from "../../config/delivery.js";
@@ -288,7 +288,8 @@ export async function updateLocation(
 
 // ─────────────────────────────────────────────────────────
 // POST /api/rider/orders/:id/accept
-// PICKUP_OFFERED → PICKUP_ASSIGNED  (rider accepts the offer)
+// PICKUP_OFFERED   → PICKUP_ASSIGNED   (rider accepts pickup)
+// DELIVERY_OFFERED → OUT_FOR_DELIVERY  (rider accepts delivery)
 // ─────────────────────────────────────────────────────────
 
 export async function acceptOffer(
@@ -301,12 +302,20 @@ export async function acceptOffer(
     const rider = await getRiderForUser(req.user.id);
     const order = await getOrderForRider(orderId, rider.id);
 
-    assertTransition(order.status as OrderStatus, "PICKUP_ASSIGNED", "RIDER");
+    const isDelivery = order.status === "DELIVERY_OFFERED";
+    const fromStatus: OrderStatus = isDelivery ? "DELIVERY_OFFERED" : "PICKUP_OFFERED";
+    const toStatus: OrderStatus = isDelivery ? "OUT_FOR_DELIVERY" : "PICKUP_ASSIGNED";
+
+    assertTransition(order.status as OrderStatus, toStatus, "RIDER");
 
     // Expired offer — release it (cascades to the next rider) and
     // tell this rider it's gone.
     if (order.offerExpiresAt && order.offerExpiresAt.getTime() < Date.now()) {
-      await releasePickupOffer(orderId, rider.id, req.user.id, "SYSTEM");
+      if (isDelivery) {
+        await releaseDeliveryOffer(orderId, rider.id, req.user.id, "SYSTEM");
+      } else {
+        await releasePickupOffer(orderId, rider.id, req.user.id, "SYSTEM");
+      }
       throw new ConflictError(
         "This offer has expired and was passed to another rider",
         "ERR_OFFER_EXPIRED",
@@ -317,14 +326,14 @@ export async function acceptOffer(
       const [row] = await tx
         .update(orders)
         .set({
-          status: "PICKUP_ASSIGNED",
+          status: toStatus,
           offerExpiresAt: null,
           updatedAt: new Date(),
         })
         .where(
           and(
             eq(orders.id, orderId),
-            eq(orders.status, "PICKUP_OFFERED"),
+            eq(orders.status, fromStatus),
             eq(orders.riderId, rider.id),
           ),
         )
@@ -339,8 +348,8 @@ export async function acceptOffer(
 
       await tx.insert(orderEvents).values({
         orderId,
-        fromStatus: "PICKUP_OFFERED" as OrderStatus,
-        toStatus: "PICKUP_ASSIGNED" as OrderStatus,
+        fromStatus,
+        toStatus,
         actor: "RIDER",
         actorId: req.user.id,
       });
@@ -348,12 +357,21 @@ export async function acceptOffer(
       return row;
     });
 
-    notifyUserAsync(
-      order.customerId,
-      "Rider on the way 🛵",
-      "A rider has accepted your pickup and is heading your way.",
-      { type: "PICKUP_ACCEPTED", orderId },
-    );
+    if (isDelivery) {
+      notifyUserAsync(
+        order.customerId,
+        "Out for delivery 🚚",
+        "A rider has your fresh laundry and is on the way back to you.",
+        { type: "ORDER_OUT_FOR_DELIVERY", orderId },
+      );
+    } else {
+      notifyUserAsync(
+        order.customerId,
+        "Rider on the way 🛵",
+        "A rider has accepted your pickup and is heading your way.",
+        { type: "PICKUP_ACCEPTED", orderId },
+      );
+    }
 
     res.status(200).json(updated);
   } catch (err) {
@@ -363,7 +381,8 @@ export async function acceptOffer(
 
 // ─────────────────────────────────────────────────────────
 // POST /api/rider/orders/:id/decline
-// PICKUP_OFFERED → SHOP_ACCEPTED  (offer passes to the next rider)
+// PICKUP_OFFERED   → SHOP_ACCEPTED  (pickup passes to next rider)
+// DELIVERY_OFFERED → READY          (delivery passes to next rider)
 // ─────────────────────────────────────────────────────────
 
 export async function declineOffer(
@@ -376,20 +395,19 @@ export async function declineOffer(
     const rider = await getRiderForUser(req.user.id);
     const order = await getOrderForRider(orderId, rider.id);
 
-    if (order.status !== "PICKUP_OFFERED") {
+    const released =
+      order.status === "DELIVERY_OFFERED"
+        ? await releaseDeliveryOffer(orderId, rider.id, req.user.id, "RIDER")
+        : order.status === "PICKUP_OFFERED"
+          ? await releasePickupOffer(orderId, rider.id, req.user.id, "RIDER")
+          : null;
+
+    if (released === null) {
       throw new ConflictError(
         "There is no pending offer on this order",
         "ERR_NO_PENDING_OFFER",
       );
     }
-
-    const released = await releasePickupOffer(
-      orderId,
-      rider.id,
-      req.user.id,
-      "RIDER",
-    );
-
     if (!released) {
       throw new ConflictError(
         "Offer is no longer available",

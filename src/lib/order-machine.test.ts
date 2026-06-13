@@ -17,6 +17,7 @@ const ALL_STATUSES: OrderStatus[] = [
   "PICKED_UP_FROM_CUSTOMER",
   "AT_SHOP",
   "READY",
+  "DELIVERY_OFFERED",
   "OUT_FOR_DELIVERY",
   "DELIVERED",
   "CANCELLED",
@@ -43,7 +44,10 @@ const LEGAL: Array<[OrderStatus, OrderStatus, TransitionActor[]]> = [
   ["PICKUP_ASSIGNED", "PICKED_UP_FROM_CUSTOMER", ["RIDER"]],
   ["PICKED_UP_FROM_CUSTOMER", "AT_SHOP", ["RIDER"]],
   ["AT_SHOP", "READY", ["SHOP_OWNER"]],
+  ["READY", "DELIVERY_OFFERED", ["SYSTEM"]],
   ["READY", "OUT_FOR_DELIVERY", ["SYSTEM"]],
+  ["DELIVERY_OFFERED", "OUT_FOR_DELIVERY", ["RIDER"]],
+  ["DELIVERY_OFFERED", "READY", ["RIDER", "SYSTEM"]],
   ["OUT_FOR_DELIVERY", "DELIVERED", ["RIDER"]],
 ];
 
@@ -133,7 +137,14 @@ describe("getAllowedTransitions", () => {
     ]);
     assert.deepEqual(getAllowedTransitions("PLACED", "CUSTOMER"), ["CANCELLED"]);
     assert.deepEqual(getAllowedTransitions("PLACED", "RIDER"), []);
-    assert.deepEqual(getAllowedTransitions("READY", "SYSTEM"), ["OUT_FOR_DELIVERY"]);
+    assert.deepEqual(getAllowedTransitions("READY", "SYSTEM").sort(), [
+      "DELIVERY_OFFERED",
+      "OUT_FOR_DELIVERY",
+    ]);
+    assert.deepEqual(getAllowedTransitions("DELIVERY_OFFERED", "RIDER").sort(), [
+      "OUT_FOR_DELIVERY",
+      "READY",
+    ]);
     assert.deepEqual(getAllowedTransitions("SHOP_ACCEPTED", "SYSTEM").sort(), [
       "PICKUP_ASSIGNED",
       "PICKUP_OFFERED",

@@ -1166,6 +1166,9 @@ export async function markReady(
         .update(orders)
         .set({
           status: "READY",
+          // Fresh decline slate for the delivery-offer phase (the
+          // list may hold pickup-phase decliners).
+          declinedRiderIds: [],
           updatedAt: new Date(),
         })
         .where(and(eq(orders.id, orderId), eq(orders.status, order.status as OrderStatus)))
