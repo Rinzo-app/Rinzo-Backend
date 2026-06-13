@@ -12,8 +12,23 @@ import {
   getUserImpact,
 } from "./admin-users.handler.js";
 import { listAllOrders } from "../orders/orders.read.js";
+import { getSettings, updateSettings } from "./admin-settings.handler.js";
 
 const adminRouter = Router();
+
+// ── Operator pricing / timeout settings ──────────────────
+adminRouter.get(
+  "/settings",
+  requireAuth,
+  requireRole("ADMIN"),
+  authed(getSettings),
+);
+adminRouter.patch(
+  "/settings",
+  requireAuth,
+  requireRole("ADMIN"),
+  authed(updateSettings),
+);
 
 // ── Order management ─────────────────────────────────────
 adminRouter.get(

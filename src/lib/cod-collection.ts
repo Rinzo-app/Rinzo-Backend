@@ -1,5 +1,5 @@
 import { ledgerEntries } from "../db/schema/ledger-entries.js";
-import { COMMISSION_RATE } from "./economics.js";
+import { getPricing } from "./pricing-config.js";
 import type { db } from "../db/client.js";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -20,7 +20,7 @@ export async function bookCodCollection(
     shopId: string;
   },
 ): Promise<void> {
-  const commission = Math.round(opts.totalAmount * COMMISSION_RATE);
+  const commission = Math.round(opts.totalAmount * getPricing().commissionRate);
   const shopEarning = opts.totalAmount - commission;
 
   await tx.insert(ledgerEntries).values([

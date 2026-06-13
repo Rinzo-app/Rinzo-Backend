@@ -23,8 +23,7 @@ import { assertTransition } from "../../lib/order-machine.js";
 import { resolveRiderLegDistanceKm } from "../../lib/rider-distance.js";
 import { releasePickupOffer, releaseDeliveryOffer } from "../../lib/auto-assign.js";
 import { bookCodCollection } from "../../lib/cod-collection.js";
-import { RIDER_PAYOUT_PER_KM } from "../../config/rider-payout.js";
-import { DELIVERY_RATE_PER_KM } from "../../config/delivery.js";
+import { getPricing } from "../../lib/pricing-config.js";
 import { notifyUserAsync } from "../../lib/push.js";
 
 const availabilitySchema = z.object({
@@ -883,7 +882,7 @@ async function insertRiderLegPayout(
           ? { lat: riderLastLat, lng: riderLastLng }
           : undefined,
       deliveryFeePaise: deliveryFee,
-      deliveryRatePerKm: DELIVERY_RATE_PER_KM,
+      deliveryRatePerKm: getPricing().deliveryRatePerKm,
     });
 
     if (!resolved) {
@@ -914,7 +913,8 @@ async function insertRiderLegPayout(
       );
     }
 
-    const payout = Math.round(resolved.distanceKm * RIDER_PAYOUT_PER_KM);
+    const riderPayoutPerKm = getPricing().riderPayoutPerKm;
+    const payout = Math.round(resolved.distanceKm * riderPayoutPerKm);
     if (payout <= 0) return; // zero-distance edge case
 
     await tx.insert(ledgerEntries).values({
@@ -927,7 +927,7 @@ async function insertRiderLegPayout(
         leg,
         distanceKm: Math.round(resolved.distanceKm * 100) / 100,
         distanceSource: resolved.source,
-        ratePerKm: RIDER_PAYOUT_PER_KM,
+        ratePerKm: riderPayoutPerKm,
       },
     });
   } catch (err) {

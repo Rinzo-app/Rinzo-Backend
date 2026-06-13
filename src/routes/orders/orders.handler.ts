@@ -7,7 +7,7 @@ import { services } from "../../db/schema/services.js";
 import { orders, orderItems } from "../../db/schema/orders.js";
 import { orderEvents } from "../../db/schema/order-events.js";
 import { payments } from "../../db/schema/payments.js";
-import { PLATFORM_FEE } from "../../lib/economics.js";
+import { getPricing } from "../../lib/pricing-config.js";
 import { computeDeliveryFee } from "../../lib/delivery-fee.js";
 import { decideAdjustment } from "../../lib/weighing.js";
 import { haversineDistance } from "../../lib/geo.js";
@@ -149,6 +149,7 @@ export async function createOrder(
     }
 
     const deliveryFee = computeDeliveryFee(distanceM);
+    const platformFee = getPricing().platformFee;
 
     // ── 6. Insert order + order_items in a transaction ───
     let result;
@@ -192,7 +193,7 @@ export async function createOrder(
               quantity,
             })),
             totalAmount,
-            platformFee: PLATFORM_FEE,
+            platformFee,
             deliveryFee,
             status: "PLACED",
             pickupAddress: body.pickupAddress,
@@ -264,7 +265,7 @@ export async function createOrder(
     notifyUserAsync(
       shop.ownerId,
       "New order 🧺",
-      `${itemRows.length} item${itemRows.length !== 1 ? "s" : ""} — ₹${((totalAmount + PLATFORM_FEE + deliveryFee) / 100).toFixed(0)}. Tap to accept.`,
+      `${itemRows.length} item${itemRows.length !== 1 ? "s" : ""} — ₹${((totalAmount + platformFee + deliveryFee) / 100).toFixed(0)}. Tap to accept.`,
       { type: "ORDER_PLACED", orderId: result.order.id },
     );
 
@@ -850,12 +851,13 @@ export async function quoteOrder(
     }
 
     const deliveryFee = computeDeliveryFee(distanceM);
+    const platformFee = getPricing().platformFee;
 
     res.status(200).json({
       itemsTotal,
       deliveryFee,
-      platformFee: PLATFORM_FEE,
-      total: itemsTotal + deliveryFee + PLATFORM_FEE,
+      platformFee,
+      total: itemsTotal + deliveryFee + platformFee,
     });
   } catch (err) {
     next(err);

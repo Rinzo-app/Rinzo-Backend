@@ -1,6 +1,7 @@
 import { and, eq, lt, isNull, inArray } from "drizzle-orm";
 import { db } from "../db/client.js";
 import { orders } from "../db/schema/orders.js";
+import { orderEvents } from "../db/schema/order-events.js";
 import { riders } from "../db/schema/riders.js";
 import {
   tryAutoAssignPickup,
@@ -8,6 +9,8 @@ import {
   releasePickupOffer,
   releaseDeliveryOffer,
 } from "./auto-assign.js";
+import { getPricing } from "./pricing-config.js";
+import { notifyUserAsync } from "./push.js";
 
 // ─────────────────────────────────────────────────────────
 // OFFER SWEEPER
@@ -94,6 +97,63 @@ async function sweepOnce(): Promise<void> {
 
   for (const o of staleDelivery) {
     await tryAutoAssignDelivery(o.id, { allowCycleReset: true });
+  }
+
+  // ── 4. Auto-cancel stuck orders (operator-configurable timeouts) ──
+  const { placedTimeoutMin, noRiderTimeoutMin } = getPricing();
+
+  // (a) Shop never accepted — PLACED older than the accept timeout.
+  const placedCutoff = new Date(Date.now() - placedTimeoutMin * 60_000);
+  const cancelledPlaced = await db
+    .update(orders)
+    .set({ status: "CANCELLED", updatedAt: new Date() })
+    .where(and(eq(orders.status, "PLACED"), lt(orders.createdAt, placedCutoff)))
+    .returning({ id: orders.id, customerId: orders.customerId });
+
+  for (const o of cancelledPlaced) {
+    await db.insert(orderEvents).values({
+      orderId: o.id,
+      fromStatus: "PLACED",
+      toStatus: "CANCELLED",
+      actor: "SYSTEM",
+      actorId: o.customerId,
+    });
+    notifyUserAsync(
+      o.customerId,
+      "Order cancelled",
+      "The shop didn't confirm your order in time, so it was cancelled. No charge — please try another shop.",
+      { type: "ORDER_CANCELLED", orderId: o.id },
+    );
+  }
+
+  // (b) No rider found — SHOP_ACCEPTED with no rider past the timeout.
+  const noRiderCutoff = new Date(Date.now() - noRiderTimeoutMin * 60_000);
+  const cancelledNoRider = await db
+    .update(orders)
+    .set({ status: "CANCELLED", updatedAt: new Date() })
+    .where(
+      and(
+        eq(orders.status, "SHOP_ACCEPTED"),
+        isNull(orders.riderId),
+        lt(orders.updatedAt, noRiderCutoff),
+      ),
+    )
+    .returning({ id: orders.id, customerId: orders.customerId });
+
+  for (const o of cancelledNoRider) {
+    await db.insert(orderEvents).values({
+      orderId: o.id,
+      fromStatus: "SHOP_ACCEPTED",
+      toStatus: "CANCELLED",
+      actor: "SYSTEM",
+      actorId: o.customerId,
+    });
+    notifyUserAsync(
+      o.customerId,
+      "Order cancelled",
+      "We couldn't find a rider for your order, so it was cancelled. No charge — sorry for the inconvenience.",
+      { type: "ORDER_CANCELLED", orderId: o.id },
+    );
   }
 }
 

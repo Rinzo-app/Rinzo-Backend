@@ -169,6 +169,13 @@
       "when": 1738972800023,
       "tag": "0023_add_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1738972800024,
+      "tag": "0024_platform_settings_and_account_deletion",
+      "breakpoints": true
     }
   ]
 }

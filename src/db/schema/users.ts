@@ -9,5 +9,8 @@ export const users = pgTable("users", {
   phone: varchar("phone", { length: 20 }),
   email: varchar("email", { length: 255 }),
   status: userStatusEnum("status").notNull().default("PENDING"),
+  // Set when the user deletes their account; PII is anonymized and the
+  // Firebase auth record removed, but the row is kept for order history.
+  deletedAt: timestamp("deleted_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

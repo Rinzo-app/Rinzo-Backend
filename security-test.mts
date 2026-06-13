@@ -370,6 +370,45 @@ step("Approval / status gating");
   check(r.status === 403, `unapproved rider availability → 403 (got ${r.status})`);
 }
 
+// ── 7. Admin settings (configurable pricing) ─────────────
+step("Admin settings");
+{
+  let r = await api("GET", "/api/admin/settings", adminToken);
+  check(
+    r.status === 200 && typeof r.body.deliveryRatePerKm === "number",
+    `admin reads settings (got ${r.status})`,
+  );
+
+  r = await api("PATCH", "/api/admin/settings", adminToken, { platformFee: 1500 });
+  check(r.status === 200 && r.body.platformFee === 1500, `admin updates platform fee (got ${r.status})`);
+  // restore default so we don't skew prod pricing
+  await api("PATCH", "/api/admin/settings", adminToken, { platformFee: 1000 });
+
+  r = await api("GET", "/api/admin/settings", t.vCustomer);
+  check(r.status === 403, `non-admin cannot read settings (got ${r.status})`);
+
+  r = await api("PATCH", "/api/admin/settings", adminToken, { commissionBps: 99999 });
+  check(r.status === 400, `out-of-range commission rejected (got ${r.status})`);
+}
+
+// ── 8. Account deletion ──────────────────────────────────
+step("Account deletion");
+{
+  // vCustomer has an in-flight order → deletion blocked
+  let r = await api("DELETE", "/api/auth/me", t.vCustomer);
+  check(r.status === 409, `delete with active order → 409 (got ${r.status})`);
+
+  // aCustomer has no orders → deletion succeeds, then can't authenticate
+  const me = await api("GET", "/api/auth/me", t.aCustomer);
+  const aCustomerId = me.body?.id;
+  r = await api("DELETE", "/api/auth/me", t.aCustomer);
+  check(r.status === 200, `delete clean account → 200 (got ${r.status})`);
+  r = await api("GET", "/api/auth/me", t.aCustomer);
+  check(r.status === 401, `deleted account can't authenticate → 401 (got ${r.status})`);
+  // Row is anonymized (email nulled) so cleanup-by-email won't catch it.
+  if (aCustomerId) await db.delete(schema.users).where(inArray(schema.users.id, [aCustomerId]));
+}
+
 step("Cleanup");
 await cleanupDb();
 await cleanupFirebase();

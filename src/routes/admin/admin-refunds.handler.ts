@@ -6,7 +6,7 @@ import { payments } from "../../db/schema/payments.js";
 import { refunds } from "../../db/schema/refunds.js";
 import { ledgerEntries } from "../../db/schema/ledger-entries.js";
 import { adminEvents } from "../../db/schema/admin-events.js";
-import { COMMISSION_RATE } from "../../lib/economics.js";
+import { getPricing } from "../../lib/pricing-config.js";
 import type { AuthenticatedRequest } from "../../lib/types.js";
 import {
   BadRequestError,
@@ -97,7 +97,7 @@ export async function refundOrder(
 
     // ── 6. Compute amounts ────────────────────────────────
     const refundAmount = order.totalAmount; // excludes platformFee
-    const commission = Math.round(order.totalAmount * COMMISSION_RATE);
+    const commission = Math.round(order.totalAmount * getPricing().commissionRate);
     const shopEarning = order.totalAmount - commission;
 
     // ── 7. Transaction: refund + reversing ledger + audit ─

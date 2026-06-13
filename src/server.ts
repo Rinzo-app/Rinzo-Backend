@@ -2,6 +2,7 @@ import "dotenv/config";
 import { assertProductionEnv } from "./lib/assert-env.js";
 import { app } from "./app.js";
 import { startOfferSweeper } from "./lib/offer-sweeper.js";
+import { loadPricing } from "./lib/pricing-config.js";
 
 // ── Fail fast if critical secrets are missing ────────────
 assertProductionEnv();
@@ -29,5 +30,8 @@ app.listen(PORT, () => {
   console.log(`[rinzo-backend] env: ${nodeEnv}`);
 });
 
-// Expire stale pickup offers + retry pool orders
+// Load operator pricing/timeout config into the cache (best-effort).
+void loadPricing();
+
+// Expire stale pickup offers + retry pool orders + auto-cancel stuck orders
 startOfferSweeper();

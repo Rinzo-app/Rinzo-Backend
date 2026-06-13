@@ -8,6 +8,7 @@ import {
   registerRider,
   getMe,
 } from "./auth.handler.js";
+import { deleteAccount } from "./account.handler.js";
 
 const authRouter = Router();
 
@@ -18,5 +19,6 @@ authRouter.post("/register/customer", authLimiter, registerCustomer);
 authRouter.post("/register/shop", authLimiter, registerShop);
 authRouter.post("/register/rider", authLimiter, registerRider);
 authRouter.get("/me", requireAuth, authed(getMe));
+authRouter.delete("/me", requireAuth, authed(deleteAccount));
 
 export { authRouter };
