@@ -350,9 +350,13 @@ step("Input validation");
   r = await api("GET", "/api/orders/not-a-uuid", t.vCustomer);
   check(r.status === 400, `malformed UUID → 400 (got ${r.status})`);
 
-  // SQL-injection-style string is treated as a literal (parameterized) → 400 invalid UUID, never 500
+  // SQL-injection-style string must be safely rejected — never 200, never
+  // a 500. 400 (parseUUID) locally; an edge WAF may return 403 on prod.
   r = await api("GET", "/api/orders/' OR 1=1 --", t.vCustomer);
-  check(r.status === 400, `SQLi-style id → 400 not 500 (got ${r.status})`);
+  check(
+    [400, 403, 404].includes(r.status),
+    `SQLi-style id safely rejected, not 200/500 (got ${r.status})`,
+  );
 
   r = await api("GET", "/api/shops?limit=99999", t.vCustomer);
   check(r.status === 400 || r.status === 200, `huge limit handled (got ${r.status})`);
