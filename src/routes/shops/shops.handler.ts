@@ -28,11 +28,8 @@ export async function listShops(
     const { page, limit } = paginationSchema.parse(req.query);
     const { offset } = paginate(page, limit);
 
-    const [{ count: total }] = await db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(shops)
-      .where(eq(shops.status, "APPROVED"));
-
+    // Single round-trip: the windowed count(*) returns the full match
+    // total alongside the page rows (no separate COUNT query).
     const rows = await db
       .select({
         id: shops.id,
@@ -50,14 +47,17 @@ export async function listShops(
         deliveryFee: shops.deliveryFee,
         minOrder: shops.minOrder,
         serviceRadiusKm: shops.serviceRadiusKm,
+        total: sql<number>`count(*) over()`,
       })
       .from(shops)
       .where(eq(shops.status, "APPROVED"))
       .limit(limit)
       .offset(offset);
 
-    // Include lat/lng aliases for Customer app compatibility
-    const mapped = rows.map((shop) => ({
+    const total = rows.length > 0 ? Number(rows[0].total) : 0;
+
+    // Strip the window-count column; include lat/lng aliases for the app
+    const mapped = rows.map(({ total: _total, ...shop }) => ({
       ...shop,
       lat: shop.latitude,
       lng: shop.longitude,

@@ -1,4 +1,4 @@
-import { pgTable, uuid, jsonb, integer, text, varchar, doublePrecision, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, uuid, jsonb, integer, text, varchar, doublePrecision, timestamp, index } from "drizzle-orm/pg-core";
 import { orderStatusEnum, rejectionReasonEnum } from "./enums.js";
 import { users } from "./users.js";
 import { shops } from "./shops.js";
@@ -48,7 +48,13 @@ export const orders = pgTable("orders", {
   idempotencyKey: varchar("idempotency_key", { length: 64 }).unique(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+}, (t) => ({
+  // Order lists per actor + the sweeper/auto-assign status scans
+  customerIdx: index("orders_customer_id_idx").on(t.customerId),
+  shopIdx: index("orders_shop_id_idx").on(t.shopId),
+  riderIdx: index("orders_rider_id_idx").on(t.riderId),
+  statusIdx: index("orders_status_idx").on(t.status),
+}));
 
 export const orderItems = pgTable("order_items", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -63,4 +69,6 @@ export const orderItems = pgTable("order_items", {
   quantity: integer("quantity").notNull(),
   // Actual measured quantity (kg can be fractional) — null until weighed
   actualQuantity: doublePrecision("actual_quantity"),
-});
+}, (t) => ({
+  orderIdx: index("order_items_order_id_idx").on(t.orderId),
+}));

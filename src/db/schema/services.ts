@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, integer, boolean, text } from "drizzle-orm/pg-core";
+import { pgTable, uuid, varchar, integer, boolean, text, index } from "drizzle-orm/pg-core";
 import { pricingTypeEnum } from "./enums.js";
 import { shops } from "./shops.js";
 
@@ -13,4 +13,7 @@ export const services = pgTable("services", {
   isActive: boolean("is_active").notNull().default(true),
   // Optional photo shown in the customer shop-detail service list
   imageUrl: text("image_url"),
-});
+}, (t) => ({
+  // Services are always looked up by shop
+  shopIdx: index("services_shop_id_idx").on(t.shopId),
+}));

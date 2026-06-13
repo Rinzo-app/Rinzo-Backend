@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, boolean, doublePrecision, timestamp, text } from "drizzle-orm/pg-core";
+import { pgTable, uuid, varchar, boolean, doublePrecision, timestamp, text, index } from "drizzle-orm/pg-core";
 import { riderStatusEnum, documentsStatusEnum } from "./enums.js";
 import { users } from "./users.js";
 
@@ -25,4 +25,8 @@ export const riders = pgTable("riders", {
   lastLat: doublePrecision("last_lat"),
   lastLng: doublePrecision("last_lng"),
   locationUpdatedAt: timestamp("location_updated_at"),
-});
+}, (t) => ({
+  // getRiderForUser on every rider request; auto-assign scans by status
+  userIdx: index("riders_user_id_idx").on(t.userId),
+  statusIdx: index("riders_status_idx").on(t.status),
+}));

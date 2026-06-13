@@ -162,6 +162,13 @@
       "when": 1738972800022,
       "tag": "0022_add_image_urls",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1738972800023,
+      "tag": "0023_add_indexes",
+      "breakpoints": true
     }
   ]
 }

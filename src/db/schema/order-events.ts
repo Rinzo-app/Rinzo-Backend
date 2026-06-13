@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, uuid, varchar, timestamp, index } from "drizzle-orm/pg-core";
 import { orderStatusEnum } from "./enums.js";
 import { orders } from "./orders.js";
 
@@ -13,4 +13,6 @@ export const orderEvents = pgTable("order_events", {
   actor: varchar("actor", { length: 20 }).notNull(),   // CUSTOMER | SHOP_OWNER | RIDER | ADMIN | SYSTEM
   actorId: uuid("actor_id").notNull(),                  // user id who triggered the transition
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (t) => ({
+  orderIdx: index("order_events_order_id_idx").on(t.orderId),
+}));

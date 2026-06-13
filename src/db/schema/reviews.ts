@@ -1,4 +1,4 @@
-import { pgTable, uuid, integer, text, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, uuid, integer, text, timestamp, index } from "drizzle-orm/pg-core";
 import { orders } from "./orders.js";
 import { shops } from "./shops.js";
 import { users } from "./users.js";
@@ -21,4 +21,6 @@ export const reviews = pgTable("reviews", {
   rating: integer("rating").notNull(), // 1–5
   comment: text("comment"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (t) => ({
+  shopIdx: index("reviews_shop_id_idx").on(t.shopId),
+}));

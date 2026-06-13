@@ -7,6 +7,7 @@ import {
   boolean,
   integer,
   timestamp,
+  index,
 } from "drizzle-orm/pg-core";
 import { shopStatusEnum } from "./enums.js";
 import { users } from "./users.js";
@@ -39,4 +40,8 @@ export const shops = pgTable("shops", {
   serviceRadiusKm: integer("service_radius_km").notNull().default(5),
 
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (t) => ({
+  // Customer browse filters on status='APPROVED'
+  statusIdx: index("shops_status_idx").on(t.status),
+  ownerIdx: index("shops_owner_id_idx").on(t.ownerId),
+}));
