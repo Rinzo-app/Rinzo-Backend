@@ -129,7 +129,7 @@ export async function createOrder(
 
     const totalAmount = itemRows.reduce((sum, r) => sum + r.lineTotal, 0);
 
-    // ── 5b. Compute delivery fee ─────────────────────────
+    // ── 5b. Compute delivery fee + enforce service radius ──
     // Coordinates missing → fallback fee, never free delivery.
     const hasCoords =
       body.pickupLat != null &&
@@ -137,16 +137,18 @@ export async function createOrder(
       Number.isFinite(body.pickupLat) &&
       Number.isFinite(body.pickupLng);
 
-    const deliveryFee = computeDeliveryFee(
-      hasCoords
-        ? haversineDistance(
-            body.pickupLat!,
-            body.pickupLng!,
-            shop.latitude,
-            shop.longitude,
-          )
-        : null,
-    );
+    const distanceM = hasCoords
+      ? haversineDistance(body.pickupLat!, body.pickupLng!, shop.latitude, shop.longitude)
+      : null;
+
+    if (distanceM != null && distanceM / 1000 > shop.serviceRadiusKm) {
+      throw new BadRequestError(
+        `This shop only delivers within ${shop.serviceRadiusKm} km. You're about ${(distanceM / 1000).toFixed(1)} km away.`,
+        "ERR_OUT_OF_RANGE",
+      );
+    }
+
+    const deliveryFee = computeDeliveryFee(distanceM);
 
     // ── 6. Insert order + order_items in a transaction ───
     let result;
@@ -836,11 +838,18 @@ export async function quoteOrder(
       Number.isFinite(body.pickupLat) &&
       Number.isFinite(body.pickupLng);
 
-    const deliveryFee = computeDeliveryFee(
-      hasCoords
-        ? haversineDistance(body.pickupLat!, body.pickupLng!, shop.latitude, shop.longitude)
-        : null,
-    );
+    const distanceM = hasCoords
+      ? haversineDistance(body.pickupLat!, body.pickupLng!, shop.latitude, shop.longitude)
+      : null;
+
+    if (distanceM != null && distanceM / 1000 > shop.serviceRadiusKm) {
+      throw new BadRequestError(
+        `This shop only delivers within ${shop.serviceRadiusKm} km. You're about ${(distanceM / 1000).toFixed(1)} km away.`,
+        "ERR_OUT_OF_RANGE",
+      );
+    }
+
+    const deliveryFee = computeDeliveryFee(distanceM);
 
     res.status(200).json({
       itemsTotal,

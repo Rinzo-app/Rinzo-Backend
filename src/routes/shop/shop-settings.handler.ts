@@ -40,6 +40,7 @@ const updateSettingsBody = z.object({
   isOpen: z.boolean().optional(),
   dailyCapacity: z.number().int().positive().optional(),
   autoRejectEnabled: z.boolean().optional(),
+  serviceRadiusKm: z.number().int().min(1).max(50).optional(),
 });
 
 // ── Zod schema for shop creation ─────────────────────────
@@ -116,6 +117,7 @@ export async function createShop(
       isOpen: shop.isOpen,
       dailyCapacity: shop.dailyCapacity,
       autoRejectEnabled: shop.autoRejectEnabled,
+      serviceRadiusKm: shop.serviceRadiusKm,
     });
   } catch (err) {
     next(err);
@@ -145,6 +147,7 @@ export async function getSettings(
       isOpen: shop.isOpen,
       dailyCapacity: shop.dailyCapacity,
       autoRejectEnabled: shop.autoRejectEnabled,
+      serviceRadiusKm: shop.serviceRadiusKm,
     });
   } catch (err) {
     next(err);
@@ -180,6 +183,8 @@ export async function patchSettings(
       setFields.dailyCapacity = parsed.data.dailyCapacity;
     if (parsed.data.autoRejectEnabled !== undefined)
       setFields.autoRejectEnabled = parsed.data.autoRejectEnabled;
+    if (parsed.data.serviceRadiusKm !== undefined)
+      setFields.serviceRadiusKm = parsed.data.serviceRadiusKm;
 
     if (Object.keys(setFields).length === 0) {
       throw new BadRequestError("No fields to update");
@@ -202,6 +207,7 @@ export async function patchSettings(
       isOpen: updated.isOpen,
       dailyCapacity: updated.dailyCapacity,
       autoRejectEnabled: updated.autoRejectEnabled,
+      serviceRadiusKm: updated.serviceRadiusKm,
     });
   } catch (err) {
     next(err);

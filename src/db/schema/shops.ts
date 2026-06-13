@@ -33,6 +33,8 @@ export const shops = pgTable("shops", {
   closeTime: varchar("close_time", { length: 10 }).notNull().default("20:00"),
   deliveryFee: integer("delivery_fee").notNull().default(0),
   minOrder: integer("min_order").notNull().default(0),
+  // How far (km) the shop will accept pickups/deliveries from
+  serviceRadiusKm: integer("service_radius_km").notNull().default(5),
 
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

@@ -359,6 +359,22 @@ log("Quote shows the full price breakdown before ordering");
   );
 }
 
+log("Out-of-range pickup is rejected (beyond the shop's service radius)");
+{
+  // Far-away coordinates (~hundreds of km) exceed the default 5 km radius
+  const { status, body } = await api("POST", "/api/orders/quote", customerToken, {
+    shopId,
+    items: [{ serviceId, quantity: 1 }],
+    pickupLat: 28.6139,
+    pickupLng: 77.209,
+  });
+  assert(status === 400, `out-of-range quote should be 400, got ${status}`);
+  assert(
+    body?.error?.code === "ERR_OUT_OF_RANGE",
+    `expected ERR_OUT_OF_RANGE, got ${JSON.stringify(body)}`,
+  );
+}
+
 log("Customer places an order (COD, with idempotency key)");
 let orderId: string;
 const orderKey = `e2e-key-${Date.now()}-${Math.random().toString(36).slice(2)}`;

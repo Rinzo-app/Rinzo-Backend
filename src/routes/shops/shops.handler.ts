@@ -48,6 +48,7 @@ export async function listShops(
         closeTime: shops.closeTime,
         deliveryFee: shops.deliveryFee,
         minOrder: shops.minOrder,
+        serviceRadiusKm: shops.serviceRadiusKm,
       })
       .from(shops)
       .where(eq(shops.status, "APPROVED"))
@@ -99,6 +100,7 @@ export async function getShopDetail(
         closeTime: shops.closeTime,
         deliveryFee: shops.deliveryFee,
         minOrder: shops.minOrder,
+        serviceRadiusKm: shops.serviceRadiusKm,
       })
       .from(shops)
       .where(eq(shops.id, shopId))
