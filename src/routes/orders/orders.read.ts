@@ -7,6 +7,7 @@ import { orderEvents } from "../../db/schema/order-events.js";
 import { payments } from "../../db/schema/payments.js";
 import { shops } from "../../db/schema/shops.js";
 import { riders } from "../../db/schema/riders.js";
+import { users } from "../../db/schema/users.js";
 import type { AuthenticatedRequest } from "../../lib/types.js";
 import {
   NotFoundError,
@@ -93,7 +94,34 @@ export async function getOrderById(
       .where(eq(payments.orderId, orderId))
       .limit(1);
 
-    res.status(200).json({ ...order, items, payment: payment ?? null });
+    // ── 5. Enrich with shop + customer names so apps don't
+    //       fall back to "Laundry Shop" / "Customer" ─────────
+    const [shop] = await db
+      .select({
+        name: shops.name,
+        phone: shops.phone,
+        address: shops.address,
+      })
+      .from(shops)
+      .where(eq(shops.id, order.shopId))
+      .limit(1);
+
+    const [customer] = await db
+      .select({ name: users.name, phone: users.phone })
+      .from(users)
+      .where(eq(users.id, order.customerId))
+      .limit(1);
+
+    res.status(200).json({
+      ...order,
+      items,
+      payment: payment ?? null,
+      shopName: shop?.name ?? null,
+      shopPhone: shop?.phone ?? null,
+      shopAddress: shop?.address ?? null,
+      customerName: customer?.name ?? null,
+      customerPhone: customer?.phone ?? null,
+    });
   } catch (err) {
     next(err);
   }
