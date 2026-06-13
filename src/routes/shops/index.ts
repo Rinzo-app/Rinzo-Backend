@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { requireAuth } from "../../middleware/require-auth.js";
 import { authed } from "../../lib/typed-handler.js";
-import { listShops, getShopDetail, getShopServices } from "./shops.handler.js";
+import { listShops, getShopDetail, getShopServices, getShopReviews } from "./shops.handler.js";
 
 const shopsRouter = Router();
 
@@ -24,6 +24,13 @@ shopsRouter.get(
   "/:id/services",
   requireAuth,
   authed(getShopServices),
+);
+
+// ── GET /api/shops/:id/reviews — recent customer reviews ──
+shopsRouter.get(
+  "/:id/reviews",
+  requireAuth,
+  authed(getShopReviews),
 );
 
 export { shopsRouter };

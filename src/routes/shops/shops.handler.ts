@@ -4,6 +4,9 @@ import { db } from "../../db/client.js";
 import { paginationSchema, paginate, paginatedResponse } from "../../lib/pagination.js";
 import { shops } from "../../db/schema/shops.js";
 import { services } from "../../db/schema/services.js";
+import { reviews } from "../../db/schema/reviews.js";
+import { users } from "../../db/schema/users.js";
+import { desc } from "drizzle-orm";
 import type { AuthenticatedRequest } from "../../lib/types.js";
 import { NotFoundError } from "../../lib/errors.js";
 import { parseUUID } from "../../lib/validate-uuid.js";
@@ -163,6 +166,50 @@ export async function getShopServices(
       ...svc,
       unit: svc.pricingType,
       active: svc.isActive,
+    }));
+
+    res.status(200).json(mapped);
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─────────────────────────────────────────────────────────
+// GET /api/shops/:id/reviews
+//
+// Recent customer reviews for a shop (most recent first),
+// each with the reviewer's first name.
+// ─────────────────────────────────────────────────────────
+
+export async function getShopReviews(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const shopId = parseUUID(req.params.id as string, "shop ID");
+
+    const rows = await db
+      .select({
+        id: reviews.id,
+        rating: reviews.rating,
+        comment: reviews.comment,
+        createdAt: reviews.createdAt,
+        customerName: users.name,
+      })
+      .from(reviews)
+      .innerJoin(users, eq(users.id, reviews.customerId))
+      .where(eq(reviews.shopId, shopId))
+      .orderBy(desc(reviews.createdAt))
+      .limit(50);
+
+    const mapped = rows.map((r) => ({
+      id: r.id,
+      rating: r.rating,
+      comment: r.comment,
+      createdAt: r.createdAt,
+      // First name only, for privacy
+      customerName: (r.customerName ?? "Customer").split(" ")[0],
     }));
 
     res.status(200).json(mapped);

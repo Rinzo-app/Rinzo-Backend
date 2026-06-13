@@ -4,6 +4,7 @@ import { requireRole } from "../../middleware/require-role.js";
 import { authed } from "../../lib/typed-handler.js";
 import { createOrder, cancelOrder, acceptOrder, rejectOrder, markReady, weighOrder, approveAdjustment, quoteOrder, startPayment, checkPaymentStatus } from "./orders.handler.js";
 import { getOrderById, getOrderEvents } from "./orders.read.js";
+import { submitReview } from "./reviews.handler.js";
 
 const ordersRouter = Router();
 
@@ -80,6 +81,13 @@ ordersRouter.get(
   requireAuth,
   requireRole("CUSTOMER"),
   authed(checkPaymentStatus),
+);
+
+ordersRouter.post(
+  "/:id/review",
+  requireAuth,
+  requireRole("CUSTOMER"),
+  authed(submitReview),
 );
 
 ordersRouter.post(

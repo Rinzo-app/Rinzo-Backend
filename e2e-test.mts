@@ -117,6 +117,7 @@ async function cleanupDb(): Promise<void> {
   const orderIds = testOrders.map((o) => o.id);
 
   if (orderIds.length > 0) {
+    await db.delete(schema.reviews).where(inArray(schema.reviews.orderId, orderIds));
     await db.delete(schema.ledgerEntries).where(inArray(schema.ledgerEntries.orderId, orderIds));
     await db.delete(schema.orderEvents).where(inArray(schema.orderEvents.orderId, orderIds));
     await db.delete(schema.orderItems).where(inArray(schema.orderItems.orderId, orderIds));
@@ -503,6 +504,32 @@ log("Rider delivers → DELIVERED");
 {
   const { status } = await api("POST", `/api/rider/orders/${orderId}/deliver`, riderToken);
   assert(status === 200, `deliver → ${status}`);
+}
+
+log("Customer reviews the delivered order → shop rating recomputed");
+{
+  const { status, body } = await api("POST", `/api/orders/${orderId}/review`, customerToken, {
+    rating: 5,
+    comment: "Fast and fresh!",
+  });
+  assert(status === 201, `review → ${status}: ${JSON.stringify(body)}`);
+
+  // Reviewing twice must be rejected
+  const dupe = await api("POST", `/api/orders/${orderId}/review`, customerToken, { rating: 3 });
+  assert(dupe.status === 409, `second review should be 409, got ${dupe.status}`);
+
+  // The shop aggregate must reflect the review
+  const { body: shop } = await api("GET", `/api/shops/${shopId}`, customerToken);
+  assert(shop.totalRatings >= 1, `shop totalRatings should be >= 1, got ${shop.totalRatings}`);
+  assert(shop.rating >= 1 && shop.rating <= 5, `shop rating out of range: ${shop.rating}`);
+
+  // The review shows up in the shop's reviews list
+  const { body: list } = await api("GET", `/api/shops/${shopId}/reviews`, customerToken);
+  assert(Array.isArray(list) && list.some((r: any) => r.rating === 5), "review not in shop reviews list");
+
+  // The order now reports its review
+  const { body: reviewedOrder } = await api("GET", `/api/orders/${orderId}`, customerToken);
+  assert(reviewedOrder.reviewRating === 5, `order reviewRating should be 5, got ${reviewedOrder.reviewRating}`);
 }
 
 log("Rider collects the COD cash → payment COLLECTED + revenue ledger booked");

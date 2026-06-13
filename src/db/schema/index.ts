@@ -32,3 +32,4 @@ export { payments } from "./payments.js";
 export { ledgerEntries } from "./ledger-entries.js";
 export { refunds } from "./refunds.js";
 export { pushTokens } from "./push-tokens.js";
+export { reviews } from "./reviews.js";

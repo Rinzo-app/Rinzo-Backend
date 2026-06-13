@@ -8,6 +8,7 @@ import { payments } from "../../db/schema/payments.js";
 import { shops } from "../../db/schema/shops.js";
 import { riders } from "../../db/schema/riders.js";
 import { users } from "../../db/schema/users.js";
+import { reviews } from "../../db/schema/reviews.js";
 import type { AuthenticatedRequest } from "../../lib/types.js";
 import {
   NotFoundError,
@@ -112,6 +113,13 @@ export async function getOrderById(
       .where(eq(users.id, order.customerId))
       .limit(1);
 
+    // Has this order already been reviewed?
+    const [review] = await db
+      .select({ rating: reviews.rating })
+      .from(reviews)
+      .where(eq(reviews.orderId, orderId))
+      .limit(1);
+
     res.status(200).json({
       ...order,
       items,
@@ -121,6 +129,7 @@ export async function getOrderById(
       shopAddress: shop?.address ?? null,
       customerName: customer?.name ?? null,
       customerPhone: customer?.phone ?? null,
+      reviewRating: review?.rating ?? null,
     });
   } catch (err) {
     next(err);
