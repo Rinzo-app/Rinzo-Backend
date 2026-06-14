@@ -20,6 +20,16 @@ import { listSettlements, settleRiderCash, listShopPayouts, payShop } from "./ad
 
 const adminRouter = Router();
 
+// ── Dashboard metrics ────────────────────────────────────
+import { getDashboard } from "./admin-dashboard.handler.js";
+
+adminRouter.get(
+  "/dashboard",
+  requireAuth,
+  requireRole("ADMIN"),
+  authed(getDashboard),
+);
+
 // ── Operator pricing / timeout settings ──────────────────
 adminRouter.get(
   "/settings",
