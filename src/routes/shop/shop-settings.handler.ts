@@ -44,6 +44,8 @@ const updateSettingsBody = z.object({
   autoRejectEnabled: z.boolean().optional(),
   serviceRadiusKm: z.number().int().min(1).max(50).optional(),
   imageUrl: storageImageUrl.nullable().optional(),
+  openTime: z.string().regex(/^\d{2}:\d{2}$/, "Use HH:MM").optional(),
+  closeTime: z.string().regex(/^\d{2}:\d{2}$/, "Use HH:MM").optional(),
   // ── Payout details ──
   payoutMethod: z.enum(["BANK", "UPI"]).optional(),
   bankAccountName: z.string().trim().max(120).optional(),
@@ -165,6 +167,8 @@ function shopSettingsPayload(shop: typeof shops.$inferSelect) {
     autoRejectEnabled: shop.autoRejectEnabled,
     serviceRadiusKm: shop.serviceRadiusKm,
     imageUrl: shop.imageUrl,
+    openTime: shop.openTime,
+    closeTime: shop.closeTime,
     payoutMethod: shop.payoutMethod,
     bankAccountName: shop.bankAccountName,
     bankAccountNumber: shop.bankAccountNumber,
@@ -226,6 +230,8 @@ export async function patchSettings(
       setFields.serviceRadiusKm = parsed.data.serviceRadiusKm;
     if (parsed.data.imageUrl !== undefined)
       setFields.imageUrl = parsed.data.imageUrl;
+    if (parsed.data.openTime !== undefined) setFields.openTime = parsed.data.openTime;
+    if (parsed.data.closeTime !== undefined) setFields.closeTime = parsed.data.closeTime;
     for (const f of ["payoutMethod", "bankAccountName", "bankAccountNumber", "bankIfsc", "upiId"] as const) {
       if (parsed.data[f] !== undefined) setFields[f] = parsed.data[f];
     }
