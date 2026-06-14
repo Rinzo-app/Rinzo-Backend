@@ -136,6 +136,7 @@ async function cleanupDb(): Promise<void> {
     .where(inArray(schema.riders.userId, userIds));
   const riderIds = testRiders.map((r) => r.id);
   if (riderIds.length > 0) {
+    await db.delete(schema.riderSettlements).where(inArray(schema.riderSettlements.riderId, riderIds));
     await db.delete(schema.ledgerEntries).where(inArray(schema.ledgerEntries.entityId, riderIds));
     await db.delete(schema.riders).where(inArray(schema.riders.id, riderIds));
   }
@@ -670,22 +671,33 @@ log("Rider collects the COD cash → payment COLLECTED + revenue ledger booked")
   );
 }
 
-log("Admin settles the payment → SETTLED, rider's cash-in-hand clears");
+log("Rider sees dues; admin settles the rider's cash (per-rider) → clears");
 {
-  const { body: order } = await api("GET", `/api/orders/${orderId}`, adminToken);
-  const { status, body } = await api(
-    "POST",
-    `/api/admin/payments/${order.payment.id}/settle`,
-    adminToken,
+  // Rider's settlement endpoint shows what they owe.
+  const { body: due } = await api("GET", "/api/rider/settlement", riderToken);
+  assert(due.handOver > 0, `rider should owe handOver, got ${due.handOver}`);
+
+  // The rider appears in the admin settlements list.
+  const { body: settlements } = await api("GET", "/api/admin/settlements", adminToken);
+  assert(
+    Array.isArray(settlements.outstanding) && settlements.outstanding.length >= 1,
+    "rider should appear in admin outstanding list",
   );
-  assert(status === 200, `settle → ${status}: ${JSON.stringify(body)}`);
-  assert(body.status === "SETTLED", `payment should be SETTLED, got ${body.status}`);
+
+  // Resolve the rider's user id and settle all their cash at once.
+  const { body: riderList } = await api("GET", "/api/admin/users?role=RIDER&limit=200", adminToken);
+  const rRow = (riderList.data ?? []).find((u: any) => u.email === EMAILS.rider);
+  assert(rRow, "rider not found in admin list");
+  const { status, body } = await api("POST", `/api/admin/riders/${rRow.id}/settle`, adminToken);
+  assert(status === 200 && body.ok, `per-rider settle → ${status}: ${JSON.stringify(body)}`);
 
   const { body: earnings } = await api("GET", "/api/rider/earnings", riderToken);
   assert(
     earnings.cod.cashInHand === 0,
     `cashInHand should clear after settlement, got ${earnings.cod.cashInHand}`,
   );
+  const { body: due2 } = await api("GET", "/api/rider/settlement", riderToken);
+  assert(due2.handOver === 0, `handOver should be 0 after settle, got ${due2.handOver}`);
 }
 
 log("Verify final order, full event trail, and rider earnings");

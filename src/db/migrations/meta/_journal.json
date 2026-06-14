@@ -176,6 +176,13 @@
       "when": 1738972800024,
       "tag": "0024_platform_settings_and_account_deletion",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1738972800025,
+      "tag": "0025_rider_settlements",
+      "breakpoints": true
     }
   ]
 }

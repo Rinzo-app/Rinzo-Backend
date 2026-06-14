@@ -6,6 +6,7 @@ import { requireEmailVerified } from "../../middleware/require-email-verified.js
 import { authed } from "../../lib/typed-handler.js";
 import { getRiderProfile, updateRiderProfile, submitDocuments, toggleAvailability, updateLocation, acceptOffer, declineOffer, pickupOrder, dropoffOrder, deliverOrder, collectCash } from "./rider.handler.js";
 import { getRiderEarnings } from "./rider-earnings.handler.js";
+import { getSettlementInfo, startSettlementPayment, checkSettlementStatus } from "./rider-settlement.handler.js";
 import { listRiderOrders } from "../orders/orders.read.js";
 
 const riderRouter = Router();
@@ -42,6 +43,27 @@ riderRouter.get(
   requireAuth,
   requireRole("RIDER"),
   authed(getRiderEarnings),
+);
+
+// ── COD settlement (rider pays the platform what they owe) ──
+riderRouter.get(
+  "/settlement",
+  requireAuth,
+  requireRole("RIDER"),
+  authed(getSettlementInfo),
+);
+riderRouter.post(
+  "/settlement/pay",
+  requireAuth,
+  requireRole("RIDER"),
+  requireApprovedRider(),
+  authed(startSettlementPayment),
+);
+riderRouter.get(
+  "/settlement/:id/status",
+  requireAuth,
+  requireRole("RIDER"),
+  authed(checkSettlementStatus),
 );
 
 // ── Action endpoints — require APPROVED rider status ─────

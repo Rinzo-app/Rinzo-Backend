@@ -15,6 +15,7 @@ import {
 } from "./admin-users.handler.js";
 import { listAllOrders } from "../orders/orders.read.js";
 import { getSettings, updateSettings } from "./admin-settings.handler.js";
+import { listSettlements, settleRiderCash } from "./admin-settlements.handler.js";
 
 const adminRouter = Router();
 
@@ -81,6 +82,20 @@ adminRouter.post(
   requireAuth,
   requireRole("ADMIN"),
   authed(rejectRiderDocuments),
+);
+
+// ── Rider COD settlements ────────────────────────────────
+adminRouter.get(
+  "/settlements",
+  requireAuth,
+  requireRole("ADMIN"),
+  authed(listSettlements),
+);
+adminRouter.post(
+  "/riders/:id/settle",
+  requireAuth,
+  requireRole("ADMIN"),
+  authed(settleRiderCash),
 );
 
 adminRouter.post(

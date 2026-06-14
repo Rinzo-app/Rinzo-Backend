@@ -137,6 +137,7 @@ async function cleanupDb(): Promise<void> {
     .where(inArray(schema.riders.userId, userIds));
   const riderIds = testRiders.map((r) => r.id);
   if (riderIds.length > 0) {
+    await db.delete(schema.riderSettlements).where(inArray(schema.riderSettlements.riderId, riderIds));
     await db.delete(schema.ledgerEntries).where(inArray(schema.ledgerEntries.entityId, riderIds));
     await db.delete(schema.riders).where(inArray(schema.riders.id, riderIds));
   }
