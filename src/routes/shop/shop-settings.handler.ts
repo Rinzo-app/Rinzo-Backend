@@ -43,6 +43,8 @@ const updateSettingsBody = z.object({
   dailyCapacity: z.number().int().positive().optional(),
   autoRejectEnabled: z.boolean().optional(),
   serviceRadiusKm: z.number().int().min(1).max(50).optional(),
+  // Minimum order value in paise (0 = no minimum).
+  minOrder: z.number().int().min(0).max(1_000_000).optional(),
   imageUrl: storageImageUrl.nullable().optional(),
   openTime: z.string().regex(/^\d{2}:\d{2}$/, "Use HH:MM").optional(),
   closeTime: z.string().regex(/^\d{2}:\d{2}$/, "Use HH:MM").optional(),
@@ -168,6 +170,7 @@ function shopSettingsPayload(shop: typeof shops.$inferSelect) {
     dailyCapacity: shop.dailyCapacity,
     autoRejectEnabled: shop.autoRejectEnabled,
     serviceRadiusKm: shop.serviceRadiusKm,
+    minOrder: shop.minOrder,
     imageUrl: shop.imageUrl,
     openTime: shop.openTime,
     closeTime: shop.closeTime,
@@ -230,6 +233,7 @@ export async function patchSettings(
       setFields.autoRejectEnabled = parsed.data.autoRejectEnabled;
     if (parsed.data.serviceRadiusKm !== undefined)
       setFields.serviceRadiusKm = parsed.data.serviceRadiusKm;
+    if (parsed.data.minOrder !== undefined) setFields.minOrder = parsed.data.minOrder;
     if (parsed.data.imageUrl !== undefined)
       setFields.imageUrl = parsed.data.imageUrl;
     if (parsed.data.openTime !== undefined) setFields.openTime = parsed.data.openTime;

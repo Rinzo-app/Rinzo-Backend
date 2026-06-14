@@ -129,6 +129,16 @@ export async function createOrder(
 
     const totalAmount = itemRows.reduce((sum, r) => sum + r.lineTotal, 0);
 
+    // ── 5a. Enforce the shop's minimum order value ─────────
+    if (shop.minOrder > 0 && totalAmount < shop.minOrder) {
+      throw new BadRequestError(
+        `This shop has a minimum order of ₹${(shop.minOrder / 100).toFixed(0)}. Add more items to continue.`,
+        "ERR_BELOW_MIN_ORDER",
+      );
+    }
+
+    const tipAmount = body.tipAmount ?? 0;
+
     // ── 5b. Compute delivery fee + enforce service radius ──
     // Coordinates missing → fallback fee, never free delivery.
     const hasCoords =
@@ -195,6 +205,7 @@ export async function createOrder(
             totalAmount,
             platformFee,
             deliveryFee,
+            tipAmount,
             status: "PLACED",
             pickupAddress: body.pickupAddress,
             deliveryAddress: body.deliveryAddress,
@@ -233,7 +244,7 @@ export async function createOrder(
           .insert(payments)
           .values({
             orderId: order.id,
-            amount: order.totalAmount + order.platformFee + order.deliveryFee,
+            amount: order.totalAmount + order.platformFee + order.deliveryFee + order.tipAmount,
             method: "COD",
             status: "PENDING",
           })
@@ -983,7 +994,7 @@ export async function weighOrder(
 
         await tx
           .update(payments)
-          .set({ amount: newTotal + order.platformFee + order.deliveryFee })
+          .set({ amount: newTotal + order.platformFee + order.deliveryFee + order.tipAmount })
           .where(and(eq(payments.orderId, orderId), eq(payments.status, "PENDING")));
 
         return row;
@@ -1081,7 +1092,7 @@ export async function approveAdjustment(
 
       await tx
         .update(payments)
-        .set({ amount: newTotal + order.platformFee + order.deliveryFee })
+        .set({ amount: newTotal + order.platformFee + order.deliveryFee + order.tipAmount })
         .where(and(eq(payments.orderId, orderId), eq(payments.status, "PENDING")));
 
       return row;

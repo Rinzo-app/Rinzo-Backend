@@ -705,6 +705,34 @@ export async function deliverOrder(
         leg: "DROP",
       });
 
+      // ── Rider keeps 100% of the customer's tip ──────────
+      if (order.tipAmount > 0) {
+        const existing = await tx
+          .select({ details: ledgerEntries.details })
+          .from(ledgerEntries)
+          .where(
+            and(
+              eq(ledgerEntries.orderId, orderId),
+              eq(ledgerEntries.entityType, "RIDER"),
+              eq(ledgerEntries.entityId, rider.id),
+              eq(ledgerEntries.reason, "EARNING"),
+            ),
+          );
+        const tipBooked = existing.some(
+          (e) => (e.details as { leg?: string } | null)?.leg === "TIP",
+        );
+        if (!tipBooked) {
+          await tx.insert(ledgerEntries).values({
+            entityType: "RIDER",
+            entityId: rider.id,
+            orderId,
+            amount: order.tipAmount,
+            reason: "EARNING",
+            details: { leg: "TIP" },
+          });
+        }
+      }
+
       return row;
     });
 

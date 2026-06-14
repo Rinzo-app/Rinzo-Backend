@@ -50,6 +50,8 @@ export const createOrderSchema = z
     // Optional scheduling fields
     pickupDate: z.string().max(20).optional(),
     pickupSlot: z.string().max(50).optional(),
+    // Optional tip for the rider (paise) — added to the order total.
+    tipAmount: z.number().int().min(0).max(100000).optional(),
     // Client-generated dedupe key (e.g. a UUID per checkout attempt)
     idempotencyKey: z.string().min(8).max(64).optional(),
   })

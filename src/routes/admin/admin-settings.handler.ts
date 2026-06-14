@@ -48,6 +48,7 @@ const updateSchema = z
     noRiderTimeoutMin: z.number().int().min(5).max(1440).optional(),
     pickupSlaMin: z.number().int().min(5).max(1440).optional(),
     deliverySlaMin: z.number().int().min(5).max(1440).optional(),
+    cancellationFee: paise.optional(),
   })
   .refine((b) => Object.keys(b).length > 0, { message: "No fields to update" });
 

@@ -18,6 +18,9 @@ export const orders = pgTable("orders", {
   totalAmount: integer("total_amount").notNull(),
   platformFee: integer("platform_fee").notNull().default(0),
   deliveryFee: integer("delivery_fee").notNull().default(0),
+  // Optional rider tip (paise), added to the order total; paid 100% to
+  // the rider on delivery.
+  tipAmount: integer("tip_amount").notNull().default(0),
   status: orderStatusEnum("status").notNull().default("PLACED"),
   pickupAddress: text("pickup_address").notNull(),
   deliveryAddress: text("delivery_address").notNull(),

@@ -24,6 +24,7 @@ export interface PricingConfig {
   noRiderTimeoutMin: number; // auto-cancel a no-rider order after N min
   pickupSlaMin: number; // auto-reassign a rider idle on PICKUP_ASSIGNED after N min
   deliverySlaMin: number; // flag a goods-in-hand order for admin after N min
+  cancellationFee: number; // paise charged on post-accept cancel (prepaid only)
 }
 
 /** Shape of the settings row this module reads (structural, no schema import). */
@@ -38,6 +39,7 @@ interface SettingsRow {
   noRiderTimeoutMin: number;
   pickupSlaMin: number;
   deliverySlaMin: number;
+  cancellationFee: number;
 }
 
 const DEFAULTS: PricingConfig = {
@@ -51,6 +53,7 @@ const DEFAULTS: PricingConfig = {
   noRiderTimeoutMin: 60,
   pickupSlaMin: 45,
   deliverySlaMin: 60,
+  cancellationFee: 0,
 };
 
 let current: PricingConfig = { ...DEFAULTS };
@@ -69,6 +72,7 @@ function fromRow(row: SettingsRow): PricingConfig {
     noRiderTimeoutMin: row.noRiderTimeoutMin,
     pickupSlaMin: row.pickupSlaMin,
     deliverySlaMin: row.deliverySlaMin,
+    cancellationFee: row.cancellationFee,
   };
 }
 

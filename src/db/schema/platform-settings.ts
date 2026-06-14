@@ -27,5 +27,8 @@ export const platformSettings = pgTable("platform_settings", {
   //    delivery) past this window flags the order for admin review.
   pickupSlaMin: integer("pickup_sla_min").notNull().default(45),
   deliverySlaMin: integer("delivery_sla_min").notNull().default(60),
+  // Fee charged when a customer cancels after the shop accepts (paise).
+  // Only collectable on prepaid/online orders — inert for COD.
+  cancellationFee: integer("cancellation_fee").notNull().default(0),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
