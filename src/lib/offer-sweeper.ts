@@ -1,4 +1,4 @@
-import { and, eq, lt, isNull, inArray } from "drizzle-orm";
+import { and, eq, lt, isNull, inArray, sql } from "drizzle-orm";
 import { db } from "../db/client.js";
 import { orders } from "../db/schema/orders.js";
 import { orderEvents } from "../db/schema/order-events.js";
@@ -128,7 +128,11 @@ async function sweepOnce(): Promise<void> {
     );
   }
 
-  // (b) No rider found — SHOP_ACCEPTED with no rider past the timeout.
+  // (b) No rider found — still seeking past the timeout. Measured from
+  //     riderSearchStartedAt (set on shop-accept, preserved across
+  //     offer/expiry cycles) so a perpetually-re-offered order actually
+  //     gives up instead of churning forever. Falls back to updatedAt for
+  //     legacy rows with no search-start timestamp.
   const noRiderCutoff = new Date(Date.now() - noRiderTimeoutMin * 60_000);
   const cancelledNoRider = await db
     .update(orders)
@@ -137,7 +141,7 @@ async function sweepOnce(): Promise<void> {
       and(
         eq(orders.status, "SHOP_ACCEPTED"),
         isNull(orders.riderId),
-        lt(orders.updatedAt, noRiderCutoff),
+        lt(sql`coalesce(${orders.riderSearchStartedAt}, ${orders.updatedAt})`, noRiderCutoff),
       ),
     )
     .returning({ id: orders.id, customerId: orders.customerId });

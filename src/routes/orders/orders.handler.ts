@@ -450,6 +450,8 @@ export async function acceptOrder(
         .set({
           status: "SHOP_ACCEPTED",
           updatedAt: new Date(),
+          // Anchor the rider-search clock (preserved across offer cycles).
+          riderSearchStartedAt: new Date(),
         })
         .where(and(eq(orders.id, orderId), eq(orders.status, order.status as OrderStatus)))
         .returning();

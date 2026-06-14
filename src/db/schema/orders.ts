@@ -41,6 +41,10 @@ export const orders = pgTable("orders", {
   // from re-offers.
   offerExpiresAt: timestamp("offer_expires_at"),
   declinedRiderIds: jsonb("declined_rider_ids").notNull().default([]),
+  // Set when the shop accepts and a rider search begins; preserved across
+  // offer/expiry cycles (unlike updatedAt) so the no-rider auto-cancel can
+  // measure total search time and stop the order churning forever.
+  riderSearchStartedAt: timestamp("rider_search_started_at"),
   // Proof-of-delivery photo URL captured by the rider at handover
   deliveryProofUrl: text("delivery_proof_url"),
   // Set by the SLA sweeper when a rider carrying goods (PICKED_UP /
