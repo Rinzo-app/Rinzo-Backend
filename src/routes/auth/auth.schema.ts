@@ -15,12 +15,26 @@ const phoneField = z
 const emailField = z.string().email().max(255).optional();
 
 // ── POST /api/auth/register/customer ─────────────────────
+// Phone is required: the shop and rider need a number to reach the
+// customer for pickup/delivery.
 export const registerCustomerSchema = z.object({
   name: nameField,
-  phone: phoneField.optional(),
+  phone: phoneField,
   email: emailField,
 });
 export type RegisterCustomerInput = z.infer<typeof registerCustomerSchema>;
+
+// ── PATCH /api/auth/me ───────────────────────────────────
+// Self-service profile edit (name and/or contact number).
+export const updateProfileSchema = z
+  .object({
+    name: nameField.optional(),
+    phone: phoneField.optional(),
+  })
+  .refine((b) => b.name !== undefined || b.phone !== undefined, {
+    message: "Provide a name or phone to update",
+  });
+export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
 
 // ── POST /api/auth/register/shop ─────────────────────────
 export const registerShopSchema = z.object({

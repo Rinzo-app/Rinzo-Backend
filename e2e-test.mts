@@ -394,6 +394,7 @@ log("Register customer → expect ACTIVE immediately");
 {
   const { status, body } = await api("POST", "/api/auth/register/customer", customerToken, {
     name: "E2E Customer",
+    phone: "9990003333",
   });
   assert(status === 201, `register/customer → ${status}: ${JSON.stringify(body)}`);
   assert(body.status === "ACTIVE", `customer should be ACTIVE, got ${body.status}`);

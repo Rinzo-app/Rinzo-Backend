@@ -7,6 +7,7 @@ import {
   registerShop,
   registerRider,
   getMe,
+  updateMe,
 } from "./auth.handler.js";
 import { deleteAccount } from "./account.handler.js";
 
@@ -19,6 +20,7 @@ authRouter.post("/register/customer", authLimiter, registerCustomer);
 authRouter.post("/register/shop", authLimiter, registerShop);
 authRouter.post("/register/rider", authLimiter, registerRider);
 authRouter.get("/me", requireAuth, authed(getMe));
+authRouter.patch("/me", requireAuth, authed(updateMe));
 authRouter.delete("/me", requireAuth, authed(deleteAccount));
 
 export { authRouter };

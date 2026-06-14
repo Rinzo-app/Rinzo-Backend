@@ -13,6 +13,7 @@ import {
   registerCustomerSchema,
   registerShopSchema,
   registerRiderSchema,
+  updateProfileSchema,
 } from "./auth.schema.js";
 import type { Request } from "express";
 import type { AuthenticatedRequest } from "../../lib/types.js";
@@ -80,7 +81,7 @@ export async function registerCustomer(
         firebaseUid: decoded.uid,
         role: "CUSTOMER",
         name: body.data.name,
-        phone: body.data.phone ?? null,
+        phone: body.data.phone,
         email: body.data.email ?? decoded.email ?? null,
         status: "ACTIVE",
       })
@@ -211,6 +212,8 @@ export async function getMe(
   const [user] = await db
     .select({
       id: users.id,
+      name: users.name,
+      phone: users.phone,
       email: users.email,
       role: users.role,
       status: users.status,
@@ -225,4 +228,47 @@ export async function getMe(
   }
 
   res.json(user);
+}
+
+// ─────────────────────────────────────────────────────────
+// PATCH /api/auth/me
+// Self-service update of the authenticated user's name / phone.
+// ─────────────────────────────────────────────────────────
+export async function updateMe(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const body = updateProfileSchema.safeParse(req.body);
+    if (!body.success) {
+      throw new BadRequestError(body.error.errors[0]?.message ?? "Invalid input");
+    }
+
+    const setFields: Record<string, unknown> = {};
+    if (body.data.name !== undefined) setFields.name = body.data.name;
+    if (body.data.phone !== undefined) setFields.phone = body.data.phone;
+
+    const [updated] = await db
+      .update(users)
+      .set(setFields)
+      .where(eq(users.id, req.user.id))
+      .returning({
+        id: users.id,
+        name: users.name,
+        phone: users.phone,
+        email: users.email,
+        role: users.role,
+        status: users.status,
+      });
+
+    if (!updated) {
+      res.status(404).json({ message: "User not found" });
+      return;
+    }
+
+    res.json(updated);
+  } catch (err) {
+    next(err);
+  }
 }
