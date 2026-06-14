@@ -9,6 +9,7 @@ import {
   rejectUser,
   rejectRiderDocuments,
   verifyUserEmail,
+  deleteUserByAdmin,
   suspendUser,
   getUserImpact,
 } from "./admin-users.handler.js";
@@ -87,6 +88,13 @@ adminRouter.post(
   requireAuth,
   requireRole("ADMIN"),
   authed(verifyUserEmail),
+);
+
+adminRouter.post(
+  "/users/:id/delete",
+  requireAuth,
+  requireRole("ADMIN"),
+  authed(deleteUserByAdmin),
 );
 
 adminRouter.post(

@@ -431,9 +431,17 @@ step("Email-verification gate");
 // ── 9. Account deletion ──────────────────────────────────
 step("Account deletion");
 {
-  // vCustomer has an in-flight order → deletion blocked
-  let r = await api("DELETE", "/api/auth/me", t.vCustomer);
-  check(r.status === 409, `delete with active order → 409 (got ${r.status})`);
+  // Admin-delete is admin-only and respects the active-order guard.
+  const ar = await api("GET", "/api/auth/me", t.aRider);
+  let r = await api("POST", `/api/admin/users/${ar.body?.id}/delete`, t.vOwner);
+  check(r.status === 403, `non-admin admin-delete → 403 (got ${r.status})`);
+  const vo = await api("GET", "/api/auth/me", t.vOwner);
+  r = await api("POST", `/api/admin/users/${vo.body?.id}/delete`, adminToken);
+  check(r.status === 409, `admin-delete with active order → 409 (got ${r.status})`);
+
+  // vCustomer has an in-flight order → self-deletion blocked
+  r = await api("DELETE", "/api/auth/me", t.vCustomer);
+  check(r.status === 409, `self-delete with active order → 409 (got ${r.status})`);
 
   // aCustomer has no orders → deletion succeeds, then can't authenticate
   const me = await api("GET", "/api/auth/me", t.aCustomer);

@@ -70,96 +70,108 @@ export async function deleteAccount(
       );
     }
 
-    if (await hasActiveOrders(userId, role)) {
-      throw new ConflictError(
-        "You have orders in progress. Please wait for them to complete or cancel them before deleting your account.",
-        "ERR_ACTIVE_ORDERS",
-      );
-    }
-
-    // A rider holding collected COD cash owes money to the platform/shops —
-    // block deletion until it's settled (DELIVERED orders are terminal, so
-    // the active-orders check above wouldn't catch this).
-    if (role === "RIDER") {
-      const [rider] = await db
-        .select({ id: riders.id })
-        .from(riders)
-        .where(eq(riders.userId, userId))
-        .limit(1);
-      if (rider) {
-        const [{ cash }] = await db
-          .select({ cash: sql<number>`coalesce(sum(${payments.amount}), 0)::int` })
-          .from(payments)
-          .innerJoin(orders, eq(orders.id, payments.orderId))
-          .where(
-            and(
-              eq(payments.status, "COLLECTED"),
-              eq(payments.method, "COD"),
-              eq(orders.riderId, rider.id),
-            ),
-          );
-        if (cash > 0) {
-          throw new ConflictError(
-            `You're still holding ₹${(cash / 100).toFixed(0)} in collected cash. Please hand it over and have it settled before deleting your account.`,
-            "ERR_UNSETTLED_CASH",
-          );
-        }
-      }
-    }
-
-    // Grab the Firebase UID before we null it out.
-    const [row] = await db
-      .select({ firebaseUid: users.firebaseUid })
-      .from(users)
-      .where(eq(users.id, userId))
-      .limit(1);
-
-    await db.transaction(async (tx) => {
-      // Remove personal side-data.
-      await tx.delete(addresses).where(eq(addresses.customerId, userId));
-      await tx.delete(favorites).where(eq(favorites.customerId, userId));
-      await tx.delete(pushTokens).where(eq(pushTokens.userId, userId));
-
-      // Role-specific cleanup (rows kept for order-history FK integrity).
-      if (role === "RIDER") {
-        await tx
-          .update(riders)
-          .set({
-            isAvailable: false,
-            status: "SUSPENDED",
-            dlImageUrl: null,
-            rcImageUrl: null,
-            selfieUrl: null,
-          })
-          .where(eq(riders.userId, userId));
-      } else if (role === "SHOP_OWNER") {
-        await tx
-          .update(shops)
-          .set({ isOpen: false, status: "SUSPENDED" })
-          .where(eq(shops.ownerId, userId));
-      }
-
-      // Anonymize the user; clearing firebaseUid also severs login.
-      await tx
-        .update(users)
-        .set({
-          name: "Deleted user",
-          email: null,
-          phone: null,
-          firebaseUid: null,
-          status: "SUSPENDED",
-          deletedAt: new Date(),
-        })
-        .where(eq(users.id, userId));
-    });
-
-    // Best-effort: remove the Firebase auth account so the login is gone.
-    if (row?.firebaseUid && firebaseAuth) {
-      await firebaseAuth.deleteUser(row.firebaseUid).catch(() => {});
-    }
-
+    await performAccountDeletion(userId, role);
     res.json({ ok: true, deleted: true });
   } catch (err) {
     next(err);
+  }
+}
+
+/**
+ * Shared deletion logic for self-delete and admin-delete. Blocks while
+ * orders are in flight or a rider holds unsettled cash, then anonymizes
+ * the user (PII cleared, Firebase login removed) and removes side-data.
+ * The users/shop/rider rows are kept so order history stays intact.
+ */
+export async function performAccountDeletion(
+  userId: string,
+  role: string,
+): Promise<void> {
+  if (await hasActiveOrders(userId, role)) {
+    throw new ConflictError(
+      "There are orders in progress for this account. Resolve or cancel them first.",
+      "ERR_ACTIVE_ORDERS",
+    );
+  }
+
+  // A rider holding collected COD cash owes money to the platform/shops —
+  // block deletion until it's settled (DELIVERED orders are terminal, so
+  // the active-orders check above wouldn't catch this).
+  if (role === "RIDER") {
+    const [rider] = await db
+      .select({ id: riders.id })
+      .from(riders)
+      .where(eq(riders.userId, userId))
+      .limit(1);
+    if (rider) {
+      const [{ cash }] = await db
+        .select({ cash: sql<number>`coalesce(sum(${payments.amount}), 0)::int` })
+        .from(payments)
+        .innerJoin(orders, eq(orders.id, payments.orderId))
+        .where(
+          and(
+            eq(payments.status, "COLLECTED"),
+            eq(payments.method, "COD"),
+            eq(orders.riderId, rider.id),
+          ),
+        );
+      if (cash > 0) {
+        throw new ConflictError(
+          `This rider is still holding ₹${(cash / 100).toFixed(0)} in collected cash. Settle it before deleting the account.`,
+          "ERR_UNSETTLED_CASH",
+        );
+      }
+    }
+  }
+
+  // Grab the Firebase UID before we null it out.
+  const [row] = await db
+    .select({ firebaseUid: users.firebaseUid })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+
+  await db.transaction(async (tx) => {
+    // Remove personal side-data.
+    await tx.delete(addresses).where(eq(addresses.customerId, userId));
+    await tx.delete(favorites).where(eq(favorites.customerId, userId));
+    await tx.delete(pushTokens).where(eq(pushTokens.userId, userId));
+
+    // Role-specific cleanup (rows kept for order-history FK integrity).
+    if (role === "RIDER") {
+      await tx
+        .update(riders)
+        .set({
+          isAvailable: false,
+          status: "SUSPENDED",
+          dlImageUrl: null,
+          rcImageUrl: null,
+          selfieUrl: null,
+        })
+        .where(eq(riders.userId, userId));
+    } else if (role === "SHOP_OWNER") {
+      await tx
+        .update(shops)
+        .set({ isOpen: false, status: "SUSPENDED" })
+        .where(eq(shops.ownerId, userId));
+    }
+
+    // Anonymize the user; clearing firebaseUid also severs login.
+    await tx
+      .update(users)
+      .set({
+        name: "Deleted user",
+        email: null,
+        phone: null,
+        firebaseUid: null,
+        status: "SUSPENDED",
+        deletedAt: new Date(),
+      })
+      .where(eq(users.id, userId));
+  });
+
+  // Best-effort: remove the Firebase auth account so the login is gone.
+  if (row?.firebaseUid && firebaseAuth) {
+    await firebaseAuth.deleteUser(row.firebaseUid).catch(() => {});
   }
 }

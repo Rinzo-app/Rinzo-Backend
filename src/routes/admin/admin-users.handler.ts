@@ -18,6 +18,7 @@ import {
 import { parseUUID } from "../../lib/validate-uuid.js";
 import { notifyUserAsync } from "../../lib/push.js";
 import { firebaseAuth } from "../../lib/firebase-admin.js";
+import { performAccountDeletion } from "../auth/account.handler.js";
 
 // ── Valid user‑level status transitions ──────────────────
 const ALLOWED_TRANSITIONS: Record<string, string[]> = {
@@ -368,6 +369,53 @@ export async function verifyUserEmail(
     });
 
     res.json({ ok: true, emailVerified: true });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─────────────────────────────────────────────────────────
+// POST /api/admin/users/:id/delete
+//
+// Admin removes a user/shop-owner/rider. Same safe path as a
+// self-delete: anonymize PII, remove the Firebase login, keep the row
+// for order history. Blocked while orders are in flight or a rider
+// holds unsettled cash (resolve those first).
+// ─────────────────────────────────────────────────────────
+export async function deleteUserByAdmin(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const targetUserId = parseUUID(req.params.id as string, "user ID");
+
+    const [user] = await db
+      .select({ id: users.id, role: users.role })
+      .from(users)
+      .where(eq(users.id, targetUserId))
+      .limit(1);
+    if (!user) {
+      throw new NotFoundError("User not found", "ERR_USER_NOT_FOUND");
+    }
+    if (user.role === "ADMIN") {
+      throw new BadRequestError("Admin accounts can't be deleted here", "ERR_ADMIN_DELETE");
+    }
+    if (targetUserId === req.user.id) {
+      throw new BadRequestError("Use account settings to delete your own account", "ERR_SELF_DELETE");
+    }
+
+    await performAccountDeletion(targetUserId, user.role);
+
+    await db.insert(adminEvents).values({
+      adminId: req.user.id,
+      action: "DELETE_USER",
+      targetType: "USER",
+      targetId: targetUserId,
+      details: { role: user.role },
+    });
+
+    res.json({ ok: true, deleted: true });
   } catch (err) {
     next(err);
   }
