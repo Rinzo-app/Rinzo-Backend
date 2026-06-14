@@ -1,5 +1,5 @@
 import type { Response, NextFunction } from "express";
-import { eq, and, inArray, sql, SQL } from "drizzle-orm";
+import { eq, and, inArray, isNull, sql, SQL } from "drizzle-orm";
 import { db } from "../../db/client.js";
 import { paginationSchema, paginate, paginatedResponse } from "../../lib/pagination.js";
 import { users } from "../../db/schema/users.js";
@@ -58,7 +58,10 @@ export async function listUsers(
   try {
     const { page, limit } = paginationSchema.parse(req.query);
     const { offset } = paginate(page, limit);
-    const conditions: SQL[] = [];
+    // Hide soft-deleted (anonymized) accounts from all admin listings —
+    // the row is kept for order-history integrity but shouldn't clutter
+    // the management views.
+    const conditions: SQL[] = [isNull(users.deletedAt)];
 
     const statusParam = req.query.status as string | undefined;
     if (statusParam) {
