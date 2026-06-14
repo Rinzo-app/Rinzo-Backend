@@ -120,14 +120,36 @@ export async function getOrderById(
     //    on active orders for trust/safety) ─────────────────
     let riderName: string | null = null;
     let riderPhotoUrl: string | null = null;
+    let riderLat: number | null = null;
+    let riderLng: number | null = null;
+    let riderLocationUpdatedAt: Date | null = null;
+    // Only share the rider's live location while they're actively
+    // working this order (en route / carrying goods) — not before/after.
+    const liveLegStatuses = [
+      "PICKUP_ASSIGNED",
+      "PICKED_UP_FROM_CUSTOMER",
+      "DELIVERY_OFFERED",
+      "OUT_FOR_DELIVERY",
+    ];
     if (order.riderId) {
       const [riderRow] = await db
-        .select({ userId: riders.userId, selfieUrl: riders.selfieUrl })
+        .select({
+          userId: riders.userId,
+          selfieUrl: riders.selfieUrl,
+          lastLat: riders.lastLat,
+          lastLng: riders.lastLng,
+          locationUpdatedAt: riders.locationUpdatedAt,
+        })
         .from(riders)
         .where(eq(riders.id, order.riderId))
         .limit(1);
       if (riderRow) {
         riderPhotoUrl = riderRow.selfieUrl ?? null;
+        if (liveLegStatuses.includes(order.status as string)) {
+          riderLat = riderRow.lastLat ?? null;
+          riderLng = riderRow.lastLng ?? null;
+          riderLocationUpdatedAt = riderRow.locationUpdatedAt ?? null;
+        }
         const [riderUser] = await db
           .select({ name: users.name })
           .from(users)
@@ -163,6 +185,9 @@ export async function getOrderById(
       customerLng: order.pickupLng ?? null,
       riderName,
       riderPhotoUrl,
+      riderLat,
+      riderLng,
+      riderLocationUpdatedAt,
       reviewRating: review?.rating ?? null,
     });
   } catch (err) {
