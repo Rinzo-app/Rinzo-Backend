@@ -8,6 +8,7 @@ import {
   tryAutoAssignDelivery,
   releasePickupOffer,
   releaseDeliveryOffer,
+  releaseAssignedPickup,
 } from "./auto-assign.js";
 import { getPricing } from "./pricing-config.js";
 import { notifyUserAsync } from "./push.js";
@@ -100,7 +101,8 @@ async function sweepOnce(): Promise<void> {
   }
 
   // ── 4. Auto-cancel stuck orders (operator-configurable timeouts) ──
-  const { placedTimeoutMin, noRiderTimeoutMin } = getPricing();
+  const { placedTimeoutMin, noRiderTimeoutMin, pickupSlaMin, deliverySlaMin } =
+    getPricing();
 
   // (a) Shop never accepted — PLACED older than the accept timeout.
   const placedCutoff = new Date(Date.now() - placedTimeoutMin * 60_000);
@@ -153,6 +155,60 @@ async function sweepOnce(): Promise<void> {
       "Order cancelled",
       "We couldn't find a rider for your order, so it was cancelled. No charge — sorry for the inconvenience.",
       { type: "ORDER_CANCELLED", orderId: o.id },
+    );
+  }
+
+  // ── 5. Pickup SLA — rider accepted but never collected ────
+  // Auto-unassign and re-offer (goods still with the customer).
+  const pickupSlaCutoff = new Date(Date.now() - pickupSlaMin * 60_000);
+  const idlePickups = await db
+    .select({
+      orderId: orders.id,
+      riderId: orders.riderId,
+      riderUserId: riders.userId,
+    })
+    .from(orders)
+    .innerJoin(riders, eq(riders.id, orders.riderId))
+    .where(
+      and(
+        eq(orders.status, "PICKUP_ASSIGNED"),
+        lt(orders.updatedAt, pickupSlaCutoff),
+      ),
+    )
+    .limit(BATCH_LIMIT);
+
+  for (const o of idlePickups) {
+    if (!o.riderId) continue;
+    await releaseAssignedPickup(o.orderId, o.riderId, o.riderUserId);
+  }
+
+  // ── 6. Delivery SLA — rider carrying goods too long ───────
+  // Can't safely reassign (goods are in the rider's hands), so flag the
+  // order for admin follow-up. Marked once via sla_breached_at.
+  const deliverySlaCutoff = new Date(Date.now() - deliverySlaMin * 60_000);
+  const flagged = await db
+    .update(orders)
+    .set({ slaBreachedAt: new Date() })
+    .where(
+      and(
+        inArray(orders.status, ["PICKED_UP_FROM_CUSTOMER", "OUT_FOR_DELIVERY"]),
+        lt(orders.updatedAt, deliverySlaCutoff),
+        isNull(orders.slaBreachedAt),
+      ),
+    )
+    .returning({ id: orders.id, status: orders.status, riderId: orders.riderId });
+
+  for (const o of flagged) {
+    console.warn(
+      JSON.stringify({
+        level: "warn",
+        type: "DELIVERY_SLA_BREACH",
+        message: "Rider carrying goods exceeded the delivery SLA — flagged for admin",
+        orderId: o.id,
+        status: o.status,
+        riderId: o.riderId,
+        ts: new Date().toISOString(),
+      }),
     );
   }
 }

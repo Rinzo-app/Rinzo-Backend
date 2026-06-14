@@ -20,5 +20,12 @@ export const platformSettings = pgTable("platform_settings", {
   // Auto-cancel timeouts (minutes): shop never accepts / no rider found.
   placedTimeoutMin: integer("placed_timeout_min").notNull().default(60),
   noRiderTimeoutMin: integer("no_rider_timeout_min").notNull().default(60),
+  // Rider SLA timeouts (minutes):
+  //  - pickupSlaMin: a rider who accepts a pickup but hasn't collected
+  //    within this window is auto-unassigned and the order re-offered.
+  //  - deliverySlaMin: a rider carrying goods (to shop, or out for
+  //    delivery) past this window flags the order for admin review.
+  pickupSlaMin: integer("pickup_sla_min").notNull().default(30),
+  deliverySlaMin: integer("delivery_sla_min").notNull().default(45),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

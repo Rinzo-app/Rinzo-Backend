@@ -43,6 +43,10 @@ export const orders = pgTable("orders", {
   declinedRiderIds: jsonb("declined_rider_ids").notNull().default([]),
   // Proof-of-delivery photo URL captured by the rider at handover
   deliveryProofUrl: text("delivery_proof_url"),
+  // Set by the SLA sweeper when a rider carrying goods (PICKED_UP /
+  // OUT_FOR_DELIVERY) exceeds the delivery SLA — surfaces in admin for
+  // manual follow-up. Cleared implicitly once the order leaves the leg.
+  slaBreachedAt: timestamp("sla_breached_at"),
   // Client-generated key to dedupe double-submissions (nullable;
   // Postgres unique indexes permit multiple NULLs)
   idempotencyKey: varchar("idempotency_key", { length: 64 }).unique(),

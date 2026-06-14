@@ -41,6 +41,7 @@ const LEGAL: Array<[OrderStatus, OrderStatus, TransitionActor[]]> = [
   ["SHOP_ACCEPTED", "PICKUP_ASSIGNED", ["SYSTEM"]],
   ["PICKUP_OFFERED", "PICKUP_ASSIGNED", ["RIDER"]],
   ["PICKUP_OFFERED", "SHOP_ACCEPTED", ["RIDER", "SYSTEM"]],
+  ["PICKUP_ASSIGNED", "SHOP_ACCEPTED", ["SYSTEM"]], // SLA reassign (sweeper)
   ["PICKUP_ASSIGNED", "PICKED_UP_FROM_CUSTOMER", ["RIDER"]],
   ["PICKED_UP_FROM_CUSTOMER", "AT_SHOP", ["RIDER"]],
   ["AT_SHOP", "READY", ["SHOP_OWNER"]],
@@ -87,7 +88,6 @@ describe("assertTransition — illegal edges are conflicts (409)", () => {
     ["READY", "DELIVERED"],                  // must pass OUT_FOR_DELIVERY
     ["OUT_FOR_DELIVERY", "AT_SHOP"],         // no going backwards
     ["PICKUP_OFFERED", "PICKED_UP_FROM_CUSTOMER"], // must accept first
-    ["PICKUP_ASSIGNED", "SHOP_ACCEPTED"],    // accepted offers don't go back
   ];
 
   for (const [from, to] of ILLEGAL) {

@@ -22,6 +22,8 @@ export interface PricingConfig {
   commissionRate: number; // fraction, e.g. 0.10
   placedTimeoutMin: number; // auto-cancel a never-accepted order after N min
   noRiderTimeoutMin: number; // auto-cancel a no-rider order after N min
+  pickupSlaMin: number; // auto-reassign a rider idle on PICKUP_ASSIGNED after N min
+  deliverySlaMin: number; // flag a goods-in-hand order for admin after N min
 }
 
 /** Shape of the settings row this module reads (structural, no schema import). */
@@ -34,6 +36,8 @@ interface SettingsRow {
   commissionBps: number;
   placedTimeoutMin: number;
   noRiderTimeoutMin: number;
+  pickupSlaMin: number;
+  deliverySlaMin: number;
 }
 
 const DEFAULTS: PricingConfig = {
@@ -45,6 +49,8 @@ const DEFAULTS: PricingConfig = {
   commissionRate: 0.1,
   placedTimeoutMin: 60,
   noRiderTimeoutMin: 60,
+  pickupSlaMin: 30,
+  deliverySlaMin: 45,
 };
 
 let current: PricingConfig = { ...DEFAULTS };
@@ -61,6 +67,8 @@ function fromRow(row: SettingsRow): PricingConfig {
     commissionRate: row.commissionBps / 10_000,
     placedTimeoutMin: row.placedTimeoutMin,
     noRiderTimeoutMin: row.noRiderTimeoutMin,
+    pickupSlaMin: row.pickupSlaMin,
+    deliverySlaMin: row.deliverySlaMin,
   };
 }
 

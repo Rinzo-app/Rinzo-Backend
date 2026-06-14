@@ -379,6 +379,84 @@ export async function releasePickupOffer(
 }
 
 /**
+ * SLA reassign: a rider accepted a pickup (PICKUP_ASSIGNED) but never
+ * collected within the pickup SLA. Unassign them back to the pool,
+ * exclude them from re-offers (they sat on it), notify them, then
+ * cascade to the next candidate. Safe because the goods are still with
+ * the customer — nothing is in the rider's hands yet.
+ *
+ * @returns true when the order was released back to the pool.
+ */
+export async function releaseAssignedPickup(
+  orderId: string,
+  riderId: string,
+  riderUserId: string,
+): Promise<boolean> {
+  try {
+    assertTransition("PICKUP_ASSIGNED", "SHOP_ACCEPTED", "SYSTEM");
+
+    const released = await db.transaction(async (tx) => {
+      const [fresh] = await tx
+        .select({
+          status: orders.status,
+          riderId: orders.riderId,
+          declinedRiderIds: orders.declinedRiderIds,
+        })
+        .from(orders)
+        .where(eq(orders.id, orderId))
+        .for("update")
+        .limit(1);
+
+      if (!fresh || fresh.status !== "PICKUP_ASSIGNED" || fresh.riderId !== riderId) {
+        return false; // rider already progressed or order moved on
+      }
+
+      const declined = Array.isArray(fresh.declinedRiderIds)
+        ? (fresh.declinedRiderIds as string[])
+        : [];
+      // The slow rider is excluded so the re-offer doesn't bounce back.
+      if (!declined.includes(riderId)) declined.push(riderId);
+
+      await tx
+        .update(orders)
+        .set({
+          status: "SHOP_ACCEPTED",
+          riderId: null,
+          offerExpiresAt: null,
+          declinedRiderIds: declined,
+          updatedAt: new Date(),
+        })
+        .where(eq(orders.id, orderId));
+
+      await tx.insert(orderEvents).values({
+        orderId,
+        fromStatus: "PICKUP_ASSIGNED" as OrderStatus,
+        toStatus: "SHOP_ACCEPTED" as OrderStatus,
+        actor: "SYSTEM",
+        actorId: riderUserId,
+      });
+
+      return true;
+    });
+
+    if (released) {
+      notifyUserAsync(
+        riderUserId,
+        "Pickup reassigned",
+        "You didn't start a pickup you accepted in time, so it was offered to another rider.",
+        { type: "PICKUP_REASSIGNED", orderId },
+      );
+      await tryAutoAssignPickup(orderId);
+    }
+
+    return released;
+  } catch (err) {
+    logAutoAssignError("PICKUP_SLA_RELEASE", orderId, err);
+    return false;
+  }
+}
+
+/**
  * Offer the **delivery** to a rider after an order transitions to
  * READY (or returns there after a decline / expiry). Prefers the
  * rider who did the pickup (they have context) when they're still

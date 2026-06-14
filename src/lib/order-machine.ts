@@ -75,6 +75,9 @@ const rules: readonly TransitionRule[] = [
   { from: "SHOP_ACCEPTED",            to: "PICKUP_ASSIGNED",          actors: new Set(["SYSTEM"]) },
   { from: "PICKUP_OFFERED",           to: "PICKUP_ASSIGNED",          actors: new Set(["RIDER"]) },
   { from: "PICKUP_OFFERED",           to: "SHOP_ACCEPTED",            actors: new Set(["RIDER", "SYSTEM"]) },
+  // SLA reassign: a rider idle on PICKUP_ASSIGNED is auto-unassigned
+  // back to the pool (goods still with the customer — safe to re-offer).
+  { from: "PICKUP_ASSIGNED",          to: "SHOP_ACCEPTED",            actors: new Set(["SYSTEM"]) },
   { from: "PICKUP_ASSIGNED",          to: "PICKED_UP_FROM_CUSTOMER",  actors: new Set(["RIDER"]) },
   { from: "PICKED_UP_FROM_CUSTOMER",  to: "AT_SHOP",                  actors: new Set(["RIDER"]) },
   { from: "AT_SHOP",                  to: "READY",                    actors: new Set(["SHOP_OWNER"]) },

@@ -46,6 +46,8 @@ const updateSchema = z
     commissionBps: z.number().int().min(0).max(10_000).optional(),
     placedTimeoutMin: z.number().int().min(5).max(1440).optional(),
     noRiderTimeoutMin: z.number().int().min(5).max(1440).optional(),
+    pickupSlaMin: z.number().int().min(5).max(1440).optional(),
+    deliverySlaMin: z.number().int().min(5).max(1440).optional(),
   })
   .refine((b) => Object.keys(b).length > 0, { message: "No fields to update" });
 

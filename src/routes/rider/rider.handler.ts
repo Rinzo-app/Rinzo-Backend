@@ -648,6 +648,16 @@ export async function deliverOrder(
         ? rawProof
         : null;
 
+    // ── Proof-of-delivery is mandatory ──────────────────
+    // A photo at handover is required to confirm delivery — it's the
+    // record that the laundry actually reached the customer.
+    if (!proofUrl) {
+      throw new BadRequestError(
+        "A delivery photo is required to confirm handover",
+        "ERR_PROOF_REQUIRED",
+      );
+    }
+
     // ── Validate transition ─────────────────────────────
     assertTransition(
       order.status as OrderStatus,
