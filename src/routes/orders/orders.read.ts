@@ -103,6 +103,8 @@ export async function getOrderById(
         phone: shops.phone,
         address: shops.address,
         imageUrl: shops.imageUrl,
+        latitude: shops.latitude,
+        longitude: shops.longitude,
       })
       .from(shops)
       .where(eq(shops.id, order.shopId))
@@ -151,8 +153,14 @@ export async function getOrderById(
       shopPhone: shop?.phone ?? null,
       shopAddress: shop?.address ?? null,
       shopImageUrl: shop?.imageUrl ?? null,
+      shopLat: shop?.latitude ?? null,
+      shopLng: shop?.longitude ?? null,
       customerName: customer?.name ?? null,
       customerPhone: customer?.phone ?? null,
+      // Customer pickup/delivery coordinates (for rider navigation).
+      // Aliased from the order row's pickup_lat/lng.
+      customerLat: order.pickupLat ?? null,
+      customerLng: order.pickupLng ?? null,
       riderName,
       riderPhotoUrl,
       reviewRating: review?.rating ?? null,
