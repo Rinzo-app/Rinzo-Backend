@@ -11,7 +11,7 @@ import {
   updateService,
   deleteService,
 } from "./shop-services.handler.js";
-import { createShop, getSettings, patchSettings } from "./shop-settings.handler.js";
+import { createShop, getSettings, patchSettings, submitShopDocuments } from "./shop-settings.handler.js";
 
 const shopRouter = Router();
 
@@ -83,6 +83,13 @@ shopRouter.patch(
   requireAuth,
   requireRole("SHOP_OWNER"),
   authed(patchSettings),
+);
+
+shopRouter.patch(
+  "/documents",
+  requireAuth,
+  requireRole("SHOP_OWNER"),
+  authed(submitShopDocuments),
 );
 
 export { shopRouter };

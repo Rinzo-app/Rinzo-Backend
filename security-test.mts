@@ -127,6 +127,7 @@ async function cleanupDb(): Promise<void> {
     await db.delete(schema.orders).where(inArray(schema.orders.id, orderIds));
   }
   if (shopIds.length > 0) {
+    await db.delete(schema.shopPayouts).where(inArray(schema.shopPayouts.shopId, shopIds));
     await db.delete(schema.services).where(inArray(schema.services.shopId, shopIds));
     await db.delete(schema.favorites).where(inArray(schema.favorites.shopId, shopIds));
     await db.delete(schema.shops).where(inArray(schema.shops.id, shopIds));

@@ -6,6 +6,7 @@ import { shops } from "../../db/schema/shops.js";
 import type { AuthenticatedRequest } from "../../lib/types.js";
 import { BadRequestError, ConflictError, NotFoundError } from "../../lib/errors.js";
 import { storageImageUrl } from "../../lib/validate-image-url.js";
+import { getShopOutstanding } from "../../lib/shop-payout.js";
 
 // ── Helper: resolve first shop owned by user ─────────────
 
@@ -43,7 +44,26 @@ const updateSettingsBody = z.object({
   autoRejectEnabled: z.boolean().optional(),
   serviceRadiusKm: z.number().int().min(1).max(50).optional(),
   imageUrl: storageImageUrl.nullable().optional(),
+  // ── Payout details ──
+  payoutMethod: z.enum(["BANK", "UPI"]).optional(),
+  bankAccountName: z.string().trim().max(120).optional(),
+  bankAccountNumber: z.string().trim().regex(/^\d{6,18}$/, "Enter a valid account number").optional(),
+  bankIfsc: z.string().trim().regex(/^[A-Za-z]{4}0[A-Za-z0-9]{6}$/, "Enter a valid IFSC code").optional(),
+  upiId: z.string().trim().regex(/^[\w.\-]{2,}@[\w.\-]{2,}$/, "Enter a valid UPI ID").optional(),
 });
+
+// ── Shop business-document submission ────────────────────
+const shopDocsSchema = z
+  .object({
+    panNumber: z.string().trim().regex(/^[A-Za-z]{5}\d{4}[A-Za-z]$/, "Enter a valid PAN").optional(),
+    gstNumber: z.string().trim().max(20).optional(),
+    panImageUrl: storageImageUrl.optional(),
+    licenseImageUrl: storageImageUrl.optional(),
+  })
+  .refine(
+    (b) => b.panNumber || b.gstNumber || b.panImageUrl || b.licenseImageUrl,
+    { message: "Provide at least one document" },
+  );
 
 // ── Zod schema for shop creation ─────────────────────────
 
@@ -130,6 +150,35 @@ export async function createShop(
 // GET /api/shop/settings
 // ──────────────────────────────────────────────────────────
 
+/** Common shop → settings payload (payout + KYC fields included). */
+function shopSettingsPayload(shop: typeof shops.$inferSelect) {
+  return {
+    id: shop.id,
+    name: shop.name,
+    phone: shop.phone,
+    address: shop.address,
+    lat: shop.latitude,
+    lng: shop.longitude,
+    status: shop.status,
+    isOpen: shop.isOpen,
+    dailyCapacity: shop.dailyCapacity,
+    autoRejectEnabled: shop.autoRejectEnabled,
+    serviceRadiusKm: shop.serviceRadiusKm,
+    imageUrl: shop.imageUrl,
+    payoutMethod: shop.payoutMethod,
+    bankAccountName: shop.bankAccountName,
+    bankAccountNumber: shop.bankAccountNumber,
+    bankIfsc: shop.bankIfsc,
+    upiId: shop.upiId,
+    panNumber: shop.panNumber,
+    gstNumber: shop.gstNumber,
+    panImageUrl: shop.panImageUrl,
+    licenseImageUrl: shop.licenseImageUrl,
+    documentsStatus: shop.documentsStatus,
+    documentsRejectionReason: shop.documentsRejectionReason,
+  };
+}
+
 export async function getSettings(
   req: AuthenticatedRequest,
   res: Response,
@@ -137,21 +186,8 @@ export async function getSettings(
 ): Promise<void> {
   try {
     const shop = await resolveOwnerShop(req.user.id);
-
-    res.json({
-      id: shop.id,
-      name: shop.name,
-      phone: shop.phone,
-      address: shop.address,
-      lat: shop.latitude,
-      lng: shop.longitude,
-      status: shop.status,
-      isOpen: shop.isOpen,
-      dailyCapacity: shop.dailyCapacity,
-      autoRejectEnabled: shop.autoRejectEnabled,
-      serviceRadiusKm: shop.serviceRadiusKm,
-      imageUrl: shop.imageUrl,
-    });
+    const { earned, paidOut, balance } = await getShopOutstanding(shop.id);
+    res.json({ ...shopSettingsPayload(shop), earnings: { earned, paidOut, balance } });
   } catch (err) {
     next(err);
   }
@@ -190,6 +226,9 @@ export async function patchSettings(
       setFields.serviceRadiusKm = parsed.data.serviceRadiusKm;
     if (parsed.data.imageUrl !== undefined)
       setFields.imageUrl = parsed.data.imageUrl;
+    for (const f of ["payoutMethod", "bankAccountName", "bankAccountNumber", "bankIfsc", "upiId"] as const) {
+      if (parsed.data[f] !== undefined) setFields[f] = parsed.data[f];
+    }
 
     if (Object.keys(setFields).length === 0) {
       throw new BadRequestError("No fields to update");
@@ -201,20 +240,46 @@ export async function patchSettings(
       .where(eq(shops.id, shop.id))
       .returning();
 
-    res.json({
-      id: updated.id,
-      name: updated.name,
-      phone: updated.phone,
-      address: updated.address,
-      lat: updated.latitude,
-      lng: updated.longitude,
-      status: updated.status,
-      isOpen: updated.isOpen,
-      dailyCapacity: updated.dailyCapacity,
-      autoRejectEnabled: updated.autoRejectEnabled,
-      serviceRadiusKm: updated.serviceRadiusKm,
-      imageUrl: updated.imageUrl,
-    });
+    res.json(shopSettingsPayload(updated));
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ──────────────────────────────────────────────────────────
+// PATCH /api/shop/documents
+// Owner submits business KYC (PAN / GST / shop licence) for review.
+// ──────────────────────────────────────────────────────────
+
+export async function submitShopDocuments(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const shop = await resolveOwnerShop(req.user.id);
+
+    const parsed = shopDocsSchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw new BadRequestError(
+        parsed.error.errors[0]?.message ?? "Invalid body",
+      );
+    }
+
+    const [updated] = await db
+      .update(shops)
+      .set({
+        ...(parsed.data.panNumber !== undefined ? { panNumber: parsed.data.panNumber } : {}),
+        ...(parsed.data.gstNumber !== undefined ? { gstNumber: parsed.data.gstNumber } : {}),
+        ...(parsed.data.panImageUrl !== undefined ? { panImageUrl: parsed.data.panImageUrl } : {}),
+        ...(parsed.data.licenseImageUrl !== undefined ? { licenseImageUrl: parsed.data.licenseImageUrl } : {}),
+        documentsStatus: "SUBMITTED",
+        documentsRejectionReason: null,
+      })
+      .where(eq(shops.id, shop.id))
+      .returning();
+
+    res.json(shopSettingsPayload(updated));
   } catch (err) {
     next(err);
   }

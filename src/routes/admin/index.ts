@@ -8,6 +8,7 @@ import {
   approveUser,
   rejectUser,
   rejectRiderDocuments,
+  rejectShopDocuments,
   verifyUserEmail,
   deleteUserByAdmin,
   suspendUser,
@@ -15,7 +16,7 @@ import {
 } from "./admin-users.handler.js";
 import { listAllOrders } from "../orders/orders.read.js";
 import { getSettings, updateSettings } from "./admin-settings.handler.js";
-import { listSettlements, settleRiderCash } from "./admin-settlements.handler.js";
+import { listSettlements, settleRiderCash, listShopPayouts, payShop } from "./admin-settlements.handler.js";
 
 const adminRouter = Router();
 
@@ -96,6 +97,26 @@ adminRouter.post(
   requireAuth,
   requireRole("ADMIN"),
   authed(settleRiderCash),
+);
+
+// ── Shop payouts + KYC ───────────────────────────────────
+adminRouter.get(
+  "/shop-payouts",
+  requireAuth,
+  requireRole("ADMIN"),
+  authed(listShopPayouts),
+);
+adminRouter.post(
+  "/shops/:id/payout",
+  requireAuth,
+  requireRole("ADMIN"),
+  authed(payShop),
+);
+adminRouter.post(
+  "/shops/:id/reject-documents",
+  requireAuth,
+  requireRole("ADMIN"),
+  authed(rejectShopDocuments),
 );
 
 adminRouter.post(

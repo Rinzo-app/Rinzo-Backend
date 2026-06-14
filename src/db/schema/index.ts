@@ -36,3 +36,4 @@ export { pushTokens } from "./push-tokens.js";
 export { reviews } from "./reviews.js";
 export { platformSettings } from "./platform-settings.js";
 export { riderSettlements } from "./rider-settlements.js";
+export { shopPayouts } from "./shop-payouts.js";

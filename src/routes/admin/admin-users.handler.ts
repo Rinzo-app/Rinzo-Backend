@@ -134,6 +134,37 @@ export async function listUsers(
       return;
     }
 
+    // For shop-owner listings, enrich with the shop's KYC + payout fields.
+    if (roleParam === "SHOP_OWNER" && rows.length > 0) {
+      const shopRows = await db
+        .select({
+          ownerId: shops.ownerId,
+          shopId: shops.id,
+          shopName: shops.name,
+          panNumber: shops.panNumber,
+          gstNumber: shops.gstNumber,
+          panImageUrl: shops.panImageUrl,
+          licenseImageUrl: shops.licenseImageUrl,
+          documentsStatus: shops.documentsStatus,
+          documentsRejectionReason: shops.documentsRejectionReason,
+          payoutMethod: shops.payoutMethod,
+          bankAccountName: shops.bankAccountName,
+          bankAccountNumber: shops.bankAccountNumber,
+          bankIfsc: shops.bankIfsc,
+          upiId: shops.upiId,
+        })
+        .from(shops)
+        .where(inArray(shops.ownerId, rows.map((r) => r.id)));
+      const byOwner = new Map(shopRows.map((s) => [s.ownerId, s]));
+      const enriched = rows.map((r) => ({
+        ...r,
+        ...(byOwner.get(r.id) ?? {}),
+        documentsStatus: byOwner.get(r.id)?.documentsStatus ?? "NOT_SUBMITTED",
+      }));
+      res.json(paginatedResponse(enriched, total, page, limit));
+      return;
+    }
+
     res.json(paginatedResponse(rows, total, page, limit));
   } catch (err) {
     next(err);
@@ -187,12 +218,17 @@ export async function approveUser(
 
       await syncRelatedStatus(tx, row.role, row.id, "ACTIVE");
 
-      // Approving a rider implies their documents were reviewed.
+      // Approving implies the documents were reviewed.
       if (row.role === "RIDER") {
         await tx
           .update(riders)
           .set({ documentsStatus: "VERIFIED", documentsRejectionReason: null })
           .where(eq(riders.userId, targetId));
+      } else if (row.role === "SHOP_OWNER") {
+        await tx
+          .update(shops)
+          .set({ documentsStatus: "VERIFIED", documentsRejectionReason: null })
+          .where(eq(shops.ownerId, targetId));
       }
 
       await tx.insert(adminEvents).values({
@@ -321,6 +357,52 @@ export async function rejectRiderDocuments(
       reason,
       { type: "DOCUMENTS_REJECTED" },
     );
+
+    res.json({ ok: true, documentsStatus: "REJECTED", reason });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─────────────────────────────────────────────────────────
+// POST /api/admin/shops/:id/reject-documents  (:id = owner user id)
+// Ask a shop to re-upload its business documents.
+// ─────────────────────────────────────────────────────────
+export async function rejectShopDocuments(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const targetUserId = parseUUID(req.params.id as string, "user ID");
+    const reason =
+      typeof req.body?.reason === "string" && req.body.reason.trim()
+        ? req.body.reason.trim().slice(0, 300)
+        : "Business documents need to be re-uploaded (unclear, expired, or mismatched).";
+
+    const [shop] = await db
+      .select({ id: shops.id })
+      .from(shops)
+      .where(eq(shops.ownerId, targetUserId))
+      .limit(1);
+    if (!shop) throw new BadRequestError("Shop not found", "ERR_SHOP_NOT_FOUND");
+
+    await db
+      .update(shops)
+      .set({ documentsStatus: "REJECTED", documentsRejectionReason: reason })
+      .where(eq(shops.id, shop.id));
+
+    await db.insert(adminEvents).values({
+      adminId: req.user.id,
+      action: "REJECT_SHOP_DOCUMENTS",
+      targetType: "USER",
+      targetId: targetUserId,
+      details: { reason },
+    });
+
+    notifyUserAsync(targetUserId, "Documents need attention", reason, {
+      type: "DOCUMENTS_REJECTED",
+    });
 
     res.json({ ok: true, documentsStatus: "REJECTED", reason });
   } catch (err) {

@@ -183,6 +183,13 @@
       "when": 1738972800025,
       "tag": "0025_rider_settlements",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1738972800026,
+      "tag": "0026_shop_payouts_and_kyc",
+      "breakpoints": true
     }
   ]
 }

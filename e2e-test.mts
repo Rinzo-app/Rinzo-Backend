@@ -126,6 +126,7 @@ async function cleanupDb(): Promise<void> {
     await db.delete(schema.orders).where(inArray(schema.orders.id, orderIds));
   }
   if (shopIds.length > 0) {
+    await db.delete(schema.shopPayouts).where(inArray(schema.shopPayouts.shopId, shopIds));
     await db.delete(schema.services).where(inArray(schema.services.shopId, shopIds));
     await db.delete(schema.favorites).where(inArray(schema.favorites.shopId, shopIds));
     await db.delete(schema.shops).where(inArray(schema.shops.id, shopIds));
@@ -233,7 +234,29 @@ log("Negative: customer must NOT see unapproved shop");
   void body;
 }
 
-log("Admin approves shop owner → user ACTIVE, shop APPROVED");
+log("Owner sets payout details + submits business documents");
+{
+  const pay = await api("PATCH", "/api/shop/settings", ownerToken, {
+    payoutMethod: "UPI",
+    upiId: "saaf@okhdfcbank",
+  });
+  assert(pay.status === 200 && pay.body.payoutMethod === "UPI", `set payout → ${pay.status}: ${JSON.stringify(pay.body)}`);
+
+  const docs = await api("PATCH", "/api/shop/documents", ownerToken, {
+    panNumber: "ABCDE1234F",
+    panImageUrl: "https://firebasestorage.googleapis.com/v0/b/rinzo-prod-54e65.firebasestorage.app/o/e2e%2Fpan.jpg?alt=media",
+  });
+  assert(
+    docs.status === 200 && docs.body.documentsStatus === "SUBMITTED",
+    `submit shop docs → ${docs.status}: ${JSON.stringify(docs.body)}`,
+  );
+
+  // External (non-bucket) doc URL is rejected
+  const bad = await api("PATCH", "/api/shop/documents", ownerToken, { panImageUrl: "https://evil.example.com/x.jpg" });
+  assert(bad.status === 400, `external shop doc URL should be 400, got ${bad.status}`);
+}
+
+log("Admin approves shop owner → user ACTIVE, shop APPROVED + docs VERIFIED");
 let ownerUserId: string;
 {
   const { body: pending } = await api(
@@ -243,6 +266,7 @@ let ownerUserId: string;
   );
   const ownerRow = (pending.data ?? []).find((u: any) => u.email === EMAILS.owner);
   assert(ownerRow, "owner not found in admin PENDING list");
+  assert(ownerRow.documentsStatus === "SUBMITTED", `admin list should show docs SUBMITTED, got ${ownerRow.documentsStatus}`);
   ownerUserId = ownerRow.id;
   const { status, body } = await api(
     "POST",
@@ -252,6 +276,7 @@ let ownerUserId: string;
   assert(status === 200, `approve owner → ${status}: ${JSON.stringify(body)}`);
   const { body: settings } = await api("GET", "/api/shop/settings", ownerToken);
   assert(settings.status === "APPROVED", `shop should be APPROVED, got ${settings.status}`);
+  assert(settings.documentsStatus === "VERIFIED", `shop docs should be VERIFIED, got ${settings.documentsStatus}`);
 }
 
 log("Owner registers a push token");
@@ -698,6 +723,20 @@ log("Rider sees dues; admin settles the rider's cash (per-rider) → clears");
   );
   const { body: due2 } = await api("GET", "/api/rider/settlement", riderToken);
   assert(due2.handOver === 0, `handOver should be 0 after settle, got ${due2.handOver}`);
+}
+
+log("Shop has a payable balance; admin pays it out → balance clears");
+{
+  const { body: sp } = await api("GET", "/api/admin/shop-payouts", adminToken);
+  const row = (sp.outstanding ?? []).find((s: any) => s.shopId === shopId);
+  assert(row && row.balance > 0, `shop should have a balance, got ${JSON.stringify(row)}`);
+
+  const { status, body } = await api("POST", `/api/admin/shops/${shopId}/payout`, adminToken);
+  assert(status === 200 && body.ok, `shop payout → ${status}: ${JSON.stringify(body)}`);
+
+  const { body: sp2 } = await api("GET", "/api/admin/shop-payouts", adminToken);
+  const row2 = (sp2.outstanding ?? []).find((s: any) => s.shopId === shopId);
+  assert(!row2 || row2.balance === 0, `shop balance should clear, got ${JSON.stringify(row2)}`);
 }
 
 log("Verify final order, full event trail, and rider earnings");

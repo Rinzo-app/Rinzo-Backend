@@ -9,7 +9,7 @@ import {
   timestamp,
   index,
 } from "drizzle-orm/pg-core";
-import { shopStatusEnum } from "./enums.js";
+import { shopStatusEnum, documentsStatusEnum } from "./enums.js";
 import { users } from "./users.js";
 
 export const shops = pgTable("shops", {
@@ -38,6 +38,21 @@ export const shops = pgTable("shops", {
   minOrder: integer("min_order").notNull().default(0),
   // How far (km) the shop will accept pickups/deliveries from
   serviceRadiusKm: integer("service_radius_km").notNull().default(5),
+
+  // ── Payout details (where the platform sends the shop's earnings) ──
+  payoutMethod: varchar("payout_method", { length: 10 }), // BANK | UPI
+  bankAccountName: varchar("bank_account_name", { length: 120 }),
+  bankAccountNumber: varchar("bank_account_number", { length: 30 }),
+  bankIfsc: varchar("bank_ifsc", { length: 15 }),
+  upiId: varchar("upi_id", { length: 120 }),
+
+  // ── Business KYC (admin-reviewed, like rider documents) ──
+  panNumber: varchar("pan_number", { length: 15 }),
+  gstNumber: varchar("gst_number", { length: 20 }),
+  panImageUrl: text("pan_image_url"),
+  licenseImageUrl: text("license_image_url"),
+  documentsStatus: documentsStatusEnum("documents_status").notNull().default("NOT_SUBMITTED"),
+  documentsRejectionReason: text("documents_rejection_reason"),
 
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (t) => ({

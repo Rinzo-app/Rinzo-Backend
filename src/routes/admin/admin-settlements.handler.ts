@@ -3,14 +3,18 @@ import { and, eq, desc, sql, inArray } from "drizzle-orm";
 import { db } from "../../db/client.js";
 import { riders } from "../../db/schema/riders.js";
 import { users } from "../../db/schema/users.js";
+import { shops } from "../../db/schema/shops.js";
 import { orders } from "../../db/schema/orders.js";
 import { payments } from "../../db/schema/payments.js";
+import { ledgerEntries } from "../../db/schema/ledger-entries.js";
 import { riderSettlements } from "../../db/schema/rider-settlements.js";
+import { shopPayouts } from "../../db/schema/shop-payouts.js";
 import { adminEvents } from "../../db/schema/admin-events.js";
 import type { AuthenticatedRequest } from "../../lib/types.js";
 import { BadRequestError, NotFoundError } from "../../lib/errors.js";
 import { parseUUID } from "../../lib/validate-uuid.js";
 import { getRiderOutstanding, settlePaymentsInTx } from "../../lib/rider-settlement.js";
+import { getShopOutstanding } from "../../lib/shop-payout.js";
 
 // ─────────────────────────────────────────────────────────
 // GET /api/admin/settlements
@@ -122,6 +126,111 @@ export async function settleRiderCash(
     });
 
     res.json({ ok: true, settlement });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─────────────────────────────────────────────────────────
+// GET /api/admin/shop-payouts
+// Shops with an outstanding balance owed + recent payouts.
+// ─────────────────────────────────────────────────────────
+export async function listShopPayouts(
+  _req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    // Shops that have earned anything.
+    const earners = await db
+      .selectDistinct({ shopId: ledgerEntries.entityId })
+      .from(ledgerEntries)
+      .where(and(eq(ledgerEntries.entityType, "SHOP"), eq(ledgerEntries.reason, "EARNING")));
+    const shopIds = earners.map((e) => e.shopId).filter((x): x is string => !!x);
+
+    const outstanding: any[] = [];
+    if (shopIds.length > 0) {
+      const shopInfo = await db
+        .select({
+          id: shops.id,
+          name: shops.name,
+          ownerId: shops.ownerId,
+          payoutMethod: shops.payoutMethod,
+          bankAccountName: shops.bankAccountName,
+          bankAccountNumber: shops.bankAccountNumber,
+          bankIfsc: shops.bankIfsc,
+          upiId: shops.upiId,
+        })
+        .from(shops)
+        .where(inArray(shops.id, shopIds));
+      const infoById = new Map(shopInfo.map((s) => [s.id, s]));
+
+      for (const shopId of shopIds) {
+        const { earned, paidOut, balance } = await getShopOutstanding(shopId);
+        if (balance <= 0) continue;
+        const info = infoById.get(shopId);
+        outstanding.push({ shopId, ...(info ?? {}), earned, paidOut, balance });
+      }
+    }
+
+    const recent = await db
+      .select()
+      .from(shopPayouts)
+      .orderBy(desc(shopPayouts.createdAt))
+      .limit(50);
+
+    res.json({ outstanding, recent });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─────────────────────────────────────────────────────────
+// POST /api/admin/shops/:id/payout   (:id = shop id)
+// Record a payout of the shop's current balance.
+// ─────────────────────────────────────────────────────────
+export async function payShop(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const shopId = parseUUID(req.params.id as string, "shop ID");
+    const reference =
+      typeof req.body?.reference === "string" ? req.body.reference.trim().slice(0, 120) : null;
+
+    const [shop] = await db
+      .select({ id: shops.id, payoutMethod: shops.payoutMethod })
+      .from(shops)
+      .where(eq(shops.id, shopId))
+      .limit(1);
+    if (!shop) throw new NotFoundError("Shop not found", "ERR_SHOP_NOT_FOUND");
+
+    const { balance } = await getShopOutstanding(shopId);
+    if (balance <= 0) {
+      throw new BadRequestError("This shop has no balance to pay out", "ERR_NOTHING_TO_PAY");
+    }
+
+    const [payout] = await db
+      .insert(shopPayouts)
+      .values({
+        shopId,
+        amount: balance,
+        method: shop.payoutMethod ?? "BANK",
+        reference,
+        createdBy: req.user.id,
+      })
+      .returning();
+
+    await db.insert(adminEvents).values({
+      adminId: req.user.id,
+      action: "PAY_SHOP",
+      targetType: "SHOP",
+      targetId: shopId,
+      details: { amount: balance, reference },
+    });
+
+    res.json({ ok: true, payout });
   } catch (err) {
     next(err);
   }
