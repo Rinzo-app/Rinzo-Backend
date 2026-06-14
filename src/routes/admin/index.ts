@@ -8,6 +8,7 @@ import {
   approveUser,
   rejectUser,
   rejectRiderDocuments,
+  verifyUserEmail,
   suspendUser,
   getUserImpact,
 } from "./admin-users.handler.js";
@@ -79,6 +80,13 @@ adminRouter.post(
   requireAuth,
   requireRole("ADMIN"),
   authed(rejectRiderDocuments),
+);
+
+adminRouter.post(
+  "/users/:id/verify-email",
+  requireAuth,
+  requireRole("ADMIN"),
+  authed(verifyUserEmail),
 );
 
 adminRouter.post(

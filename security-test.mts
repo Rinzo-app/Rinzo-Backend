@@ -395,12 +395,16 @@ step("Admin settings");
 // ── 8. Email-verification gate ───────────────────────────
 step("Email-verification gate");
 {
+  // Capture vCustomer's user id while still verified.
+  const me = await api("GET", "/api/auth/me", t.vCustomer);
+  const vCustomerId = me.body?.id;
+
   // Flip vCustomer to unverified, re-sign-in to get a token without the
-  // claim, and confirm order placement is blocked. Then restore.
+  // claim, and confirm order placement is blocked.
   const u = await firebaseAuth!.getUserByEmail(EMAILS.vCustomer);
   await firebaseAuth!.updateUser(u.uid, { emailVerified: false });
   const staleToken = await signIn(EMAILS.vCustomer, PW);
-  const r = await api("POST", "/api/orders", staleToken, {
+  let r = await api("POST", "/api/orders", staleToken, {
     shopId: vShopId,
     items: [{ serviceId: vServiceId, quantity: 1 }],
     pickupAddress: "1 Vic St, Bengaluru",
@@ -412,6 +416,15 @@ step("Email-verification gate");
     r.status === 403 && r.body.code === "ERR_EMAIL_NOT_VERIFIED",
     `unverified customer can't place order → 403 (got ${r.status}: ${r.body.code})`,
   );
+
+  // A non-admin cannot use the verify-email override.
+  r = await api("POST", `/api/admin/users/${vCustomerId}/verify-email`, staleToken);
+  check(r.status === 403, `non-admin verify-email override → 403 (got ${r.status})`);
+
+  // Admin override marks the email verified.
+  r = await api("POST", `/api/admin/users/${vCustomerId}/verify-email`, adminToken);
+  check(r.status === 200, `admin verify-email override → 200 (got ${r.status})`);
+
   await firebaseAuth!.updateUser(u.uid, { emailVerified: true });
 }
 

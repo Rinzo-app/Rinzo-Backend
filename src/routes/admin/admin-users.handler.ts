@@ -17,6 +17,7 @@ import {
 } from "../../lib/errors.js";
 import { parseUUID } from "../../lib/validate-uuid.js";
 import { notifyUserAsync } from "../../lib/push.js";
+import { firebaseAuth } from "../../lib/firebase-admin.js";
 
 // ── Valid user‑level status transitions ──────────────────
 const ALLOWED_TRANSITIONS: Record<string, string[]> = {
@@ -318,6 +319,55 @@ export async function rejectRiderDocuments(
     );
 
     res.json({ ok: true, documentsStatus: "REJECTED", reason });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─────────────────────────────────────────────────────────
+// POST /api/admin/users/:id/verify-email
+//
+// Operator override: mark a user's email as verified in Firebase
+// (support / when verification mail isn't reaching them). Lets them
+// past the email-verification gate without the link.
+// ─────────────────────────────────────────────────────────
+export async function verifyUserEmail(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const targetUserId = parseUUID(req.params.id as string, "user ID");
+
+    const [user] = await db
+      .select({ id: users.id, firebaseUid: users.firebaseUid })
+      .from(users)
+      .where(eq(users.id, targetUserId))
+      .limit(1);
+    if (!user) {
+      throw new NotFoundError("User not found", "ERR_USER_NOT_FOUND");
+    }
+    if (!user.firebaseUid) {
+      throw new BadRequestError(
+        "User has no linked Firebase account",
+        "ERR_NO_FIREBASE_UID",
+      );
+    }
+    if (!firebaseAuth) {
+      throw new BadRequestError("Auth service unavailable", "ERR_AUTH_UNAVAILABLE");
+    }
+
+    await firebaseAuth.updateUser(user.firebaseUid, { emailVerified: true });
+
+    await db.insert(adminEvents).values({
+      adminId: req.user.id,
+      action: "VERIFY_EMAIL",
+      targetType: "USER",
+      targetId: targetUserId,
+      details: {},
+    });
+
+    res.json({ ok: true, emailVerified: true });
   } catch (err) {
     next(err);
   }
