@@ -173,6 +173,9 @@ async function sweepOnce(): Promise<void> {
       and(
         eq(orders.status, "PICKUP_ASSIGNED"),
         lt(orders.updatedAt, pickupSlaCutoff),
+        // A rider who reported a delay keeps the order — it's flagged for
+        // admin instead of being auto-reassigned.
+        isNull(orders.delayReportedAt),
       ),
     )
     .limit(BATCH_LIMIT);

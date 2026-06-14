@@ -4,7 +4,7 @@ import { requireRole } from "../../middleware/require-role.js";
 import { requireApprovedRider } from "../../middleware/require-approved-rider.js";
 import { requireEmailVerified } from "../../middleware/require-email-verified.js";
 import { authed } from "../../lib/typed-handler.js";
-import { getRiderProfile, updateRiderProfile, submitDocuments, toggleAvailability, updateLocation, acceptOffer, declineOffer, pickupOrder, dropoffOrder, deliverOrder, collectCash } from "./rider.handler.js";
+import { getRiderProfile, updateRiderProfile, submitDocuments, toggleAvailability, updateLocation, acceptOffer, declineOffer, pickupOrder, dropoffOrder, deliverOrder, collectCash, reportDelay } from "./rider.handler.js";
 import { getRiderEarnings } from "./rider-earnings.handler.js";
 import { getSettlementInfo, startSettlementPayment, checkSettlementStatus } from "./rider-settlement.handler.js";
 import { listRiderOrders } from "../orders/orders.read.js";
@@ -138,6 +138,14 @@ riderRouter.post(
   requireRole("RIDER"),
   requireApprovedRider(),
   authed(collectCash),
+);
+
+riderRouter.post(
+  "/orders/:id/report-delay",
+  requireAuth,
+  requireRole("RIDER"),
+  requireApprovedRider(),
+  authed(reportDelay),
 );
 
 export { riderRouter };

@@ -47,6 +47,12 @@ export const orders = pgTable("orders", {
   // OUT_FOR_DELIVERY) exceeds the delivery SLA — surfaces in admin for
   // manual follow-up. Cleared implicitly once the order leaves the leg.
   slaBreachedAt: timestamp("sla_breached_at"),
+  // Rider-reported delay (traffic / breakdown / accident / …). When set,
+  // the pickup SLA auto-reassign is suppressed (the rider communicated)
+  // and the order is flagged for admin with the reason instead.
+  delayReason: varchar("delay_reason", { length: 40 }),
+  delayNote: text("delay_note"),
+  delayReportedAt: timestamp("delay_reported_at"),
   // Client-generated key to dedupe double-submissions (nullable;
   // Postgres unique indexes permit multiple NULLs)
   idempotencyKey: varchar("idempotency_key", { length: 64 }).unique(),

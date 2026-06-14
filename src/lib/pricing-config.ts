@@ -49,8 +49,8 @@ const DEFAULTS: PricingConfig = {
   commissionRate: 0.1,
   placedTimeoutMin: 60,
   noRiderTimeoutMin: 60,
-  pickupSlaMin: 30,
-  deliverySlaMin: 45,
+  pickupSlaMin: 45,
+  deliverySlaMin: 60,
 };
 
 let current: PricingConfig = { ...DEFAULTS };

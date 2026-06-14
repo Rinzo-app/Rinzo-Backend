@@ -722,6 +722,90 @@ export async function deliverOrder(
 }
 
 // ─────────────────────────────────────────────────────────
+// POST /api/rider/orders/:id/report-delay
+//
+// A rider stuck by traffic / breakdown / accident reports it instead
+// of silently missing the SLA. Effects:
+//  - suppresses the pickup auto-reassign (the sweeper skips orders with
+//    a reported delay — the rider keeps the order),
+//  - flags the order for admin immediately (sla_breached_at) with the
+//    reason, so a human can call / help / reassign manually.
+// ─────────────────────────────────────────────────────────
+
+const DELAY_REASONS = [
+  "TRAFFIC",
+  "BREAKDOWN",
+  "ACCIDENT",
+  "CUSTOMER_UNREACHABLE",
+  "OTHER",
+] as const;
+
+const DELAY_ACTIVE_STATUSES: OrderStatus[] = [
+  "PICKUP_ASSIGNED",
+  "PICKED_UP_FROM_CUSTOMER",
+  "OUT_FOR_DELIVERY",
+];
+
+export async function reportDelay(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const orderId = parseUUID(req.params.id as string, "order ID");
+    const rider = await getRiderForUser(req.user.id);
+    const order = await getOrderForRider(orderId, rider.id);
+
+    if (!DELAY_ACTIVE_STATUSES.includes(order.status as OrderStatus)) {
+      throw new BadRequestError(
+        "You can only report a delay on an active pickup or delivery",
+        "ERR_NOT_ACTIVE_LEG",
+      );
+    }
+
+    const reason =
+      typeof req.body?.reason === "string"
+        ? req.body.reason.trim().toUpperCase()
+        : "";
+    if (!(DELAY_REASONS as readonly string[]).includes(reason)) {
+      throw new BadRequestError("Choose a valid delay reason", "ERR_INVALID_REASON");
+    }
+    const note =
+      typeof req.body?.note === "string"
+        ? req.body.note.trim().slice(0, 280) || null
+        : null;
+
+    const [row] = await db
+      .update(orders)
+      .set({
+        delayReason: reason,
+        delayNote: note,
+        delayReportedAt: new Date(),
+        // Surface to admin right away, even before the SLA window.
+        slaBreachedAt: new Date(),
+      })
+      .where(eq(orders.id, orderId))
+      .returning();
+
+    console.warn(
+      JSON.stringify({
+        level: "warn",
+        type: "RIDER_DELAY_REPORTED",
+        orderId,
+        riderId: rider.id,
+        status: order.status,
+        reason,
+        ts: new Date().toISOString(),
+      }),
+    );
+
+    res.status(200).json(row);
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─────────────────────────────────────────────────────────
 // POST /api/rider/orders/:id/collect-cash
 // Rider confirms the COD amount was collected at delivery.
 // ─────────────────────────────────────────────────────────

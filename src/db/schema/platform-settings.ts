@@ -25,7 +25,7 @@ export const platformSettings = pgTable("platform_settings", {
   //    within this window is auto-unassigned and the order re-offered.
   //  - deliverySlaMin: a rider carrying goods (to shop, or out for
   //    delivery) past this window flags the order for admin review.
-  pickupSlaMin: integer("pickup_sla_min").notNull().default(30),
-  deliverySlaMin: integer("delivery_sla_min").notNull().default(45),
+  pickupSlaMin: integer("pickup_sla_min").notNull().default(45),
+  deliverySlaMin: integer("delivery_sla_min").notNull().default(60),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
