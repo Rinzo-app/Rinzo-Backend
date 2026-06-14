@@ -17,8 +17,10 @@ const addressesRouter = Router();
 const createAddressBody = z.object({
   label: z.string().min(1).max(50),
   addressLine: z.string().min(1).max(500),
-  lat: z.number().min(-90).max(90).optional(),
-  lng: z.number().min(-180).max(180).optional(),
+  // Coordinates are required: delivery fees and rider routing depend on
+  // an honest pickup/delivery location.
+  lat: z.number().min(-90).max(90),
+  lng: z.number().min(-180).max(180),
   isDefault: z.boolean().optional(),
 });
 
@@ -81,8 +83,8 @@ async function createAddress(
       customerId,
       label,
       addressLine,
-      lat: lat ?? null,
-      lng: lng ?? null,
+      lat,
+      lng,
       isDefault: isDefault ?? false,
     })
     .returning();
