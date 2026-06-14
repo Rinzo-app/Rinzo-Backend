@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
 import { AppError } from "../lib/errors.js";
+import { captureException } from "../lib/sentry.js";
 
 // ─────────────────────────────────────────────────────────
 // CENTRAL ERROR HANDLER
@@ -80,6 +81,9 @@ export function errorHandler(
     message: err instanceof Error ? err.message : String(err),
     stack: err instanceof Error ? err.stack : undefined,
   });
+
+  // Report to Sentry (no-op unless configured).
+  captureException(err, { requestId });
 
   const message =
     process.env.NODE_ENV === "production"

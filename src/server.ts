@@ -1,8 +1,12 @@
 import "dotenv/config";
+import { initSentry } from "./lib/sentry.js";
 import { assertProductionEnv } from "./lib/assert-env.js";
 import { app } from "./app.js";
 import { startOfferSweeper } from "./lib/offer-sweeper.js";
 import { loadPricing } from "./lib/pricing-config.js";
+
+// ── Error monitoring (no-op unless SENTRY_DSN is set) ────
+initSentry();
 
 // ── Fail fast if critical secrets are missing ────────────
 assertProductionEnv();
