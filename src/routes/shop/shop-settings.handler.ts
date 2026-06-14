@@ -46,6 +46,8 @@ const updateSettingsBody = z.object({
   imageUrl: storageImageUrl.nullable().optional(),
   openTime: z.string().regex(/^\d{2}:\d{2}$/, "Use HH:MM").optional(),
   closeTime: z.string().regex(/^\d{2}:\d{2}$/, "Use HH:MM").optional(),
+  latitude: z.number().min(-90).max(90).optional(),
+  longitude: z.number().min(-180).max(180).optional(),
   // ── Payout details ──
   payoutMethod: z.enum(["BANK", "UPI"]).optional(),
   bankAccountName: z.string().trim().max(120).optional(),
@@ -232,6 +234,8 @@ export async function patchSettings(
       setFields.imageUrl = parsed.data.imageUrl;
     if (parsed.data.openTime !== undefined) setFields.openTime = parsed.data.openTime;
     if (parsed.data.closeTime !== undefined) setFields.closeTime = parsed.data.closeTime;
+    if (parsed.data.latitude !== undefined) setFields.latitude = parsed.data.latitude;
+    if (parsed.data.longitude !== undefined) setFields.longitude = parsed.data.longitude;
     for (const f of ["payoutMethod", "bankAccountName", "bankAccountNumber", "bankIfsc", "upiId"] as const) {
       if (parsed.data[f] !== undefined) setFields[f] = parsed.data[f];
     }
