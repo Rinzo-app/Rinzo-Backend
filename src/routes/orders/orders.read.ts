@@ -1,5 +1,5 @@
 import type { Response, NextFunction } from "express";
-import { eq, and, desc, inArray, sql } from "drizzle-orm";
+import { eq, and, desc, inArray, sql, getTableColumns } from "drizzle-orm";
 import { db } from "../../db/client.js";
 import { paginationSchema, paginate, paginatedResponse } from "../../lib/pagination.js";
 import { orders, orderItems } from "../../db/schema/orders.js";
@@ -267,8 +267,13 @@ export async function listCustomerOrders(
       .where(eq(orders.customerId, customerId));
 
     const result = await db
-      .select()
+      .select({
+        ...getTableColumns(orders),
+        shopName: shops.name,
+        shopImageUrl: shops.imageUrl,
+      })
       .from(orders)
+      .leftJoin(shops, eq(shops.id, orders.shopId))
       .where(eq(orders.customerId, customerId))
       .orderBy(desc(orders.createdAt))
       .limit(limit)
