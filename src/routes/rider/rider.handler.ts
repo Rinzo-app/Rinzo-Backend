@@ -1040,8 +1040,12 @@ async function insertRiderLegPayout(
     }
 
     const riderPayoutPerKm = getPricing().riderPayoutPerKm;
-    const payout = Math.round(resolved.distanceKm * riderPayoutPerKm);
-    if (payout <= 0) return; // zero-distance edge case
+    const riderMinPayout = getPricing().riderMinPayout;
+    const distancePay = Math.round(resolved.distanceKm * riderPayoutPerKm);
+    // Floor each leg at the minimum so short trips are still worth a
+    // rider's time/fuel (keeps supply willing to accept jobs).
+    const payout = Math.max(distancePay, riderMinPayout);
+    if (payout <= 0) return; // zero-distance edge with no minimum set
 
     await tx.insert(ledgerEntries).values({
       entityType: "RIDER",
@@ -1054,6 +1058,7 @@ async function insertRiderLegPayout(
         distanceKm: Math.round(resolved.distanceKm * 100) / 100,
         distanceSource: resolved.source,
         ratePerKm: riderPayoutPerKm,
+        minApplied: payout > distancePay,
       },
     });
   } catch (err) {

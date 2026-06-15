@@ -18,6 +18,7 @@ export interface PricingConfig {
   minDeliveryFee: number; // paise
   fallbackDeliveryFee: number; // paise
   riderPayoutPerKm: number; // paise per km (rider, one-way per leg)
+  riderMinPayout: number; // paise, minimum rider payout per leg
   platformFee: number; // paise, flat per order
   commissionRate: number; // fraction, e.g. 0.10
   placedTimeoutMin: number; // auto-cancel a never-accepted order after N min
@@ -33,6 +34,7 @@ interface SettingsRow {
   minDeliveryFee: number;
   fallbackDeliveryFee: number;
   riderPayoutPerKm: number;
+  riderMinPayout: number;
   platformFee: number;
   commissionBps: number;
   placedTimeoutMin: number;
@@ -47,6 +49,7 @@ const DEFAULTS: PricingConfig = {
   minDeliveryFee: 1000,
   fallbackDeliveryFee: 2000,
   riderPayoutPerKm: 700,
+  riderMinPayout: 2000,
   platformFee: 1000,
   commissionRate: 0.1,
   placedTimeoutMin: 60,
@@ -66,6 +69,7 @@ function fromRow(row: SettingsRow): PricingConfig {
     minDeliveryFee: row.minDeliveryFee,
     fallbackDeliveryFee: row.fallbackDeliveryFee,
     riderPayoutPerKm: row.riderPayoutPerKm,
+    riderMinPayout: row.riderMinPayout,
     platformFee: row.platformFee,
     commissionRate: row.commissionBps / 10_000,
     placedTimeoutMin: row.placedTimeoutMin,

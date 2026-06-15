@@ -42,6 +42,7 @@ const updateSchema = z
     minDeliveryFee: paise.optional(),
     fallbackDeliveryFee: paise.optional(),
     riderPayoutPerKm: paise.optional(),
+    riderMinPayout: paise.optional(),
     platformFee: paise.optional(),
     commissionBps: z.number().int().min(0).max(10_000).optional(),
     placedTimeoutMin: z.number().int().min(5).max(1440).optional(),

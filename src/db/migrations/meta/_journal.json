@@ -232,6 +232,13 @@
       "when": 1738972800032,
       "tag": "0032_memberships",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1738972800033,
+      "tag": "0033_rider_min_payout",
+      "breakpoints": true
     }
   ]
 }

@@ -12,8 +12,10 @@ export const platformSettings = pgTable("platform_settings", {
   deliveryRatePerKm: integer("delivery_rate_per_km").notNull().default(1000),
   minDeliveryFee: integer("min_delivery_fee").notNull().default(1000),
   fallbackDeliveryFee: integer("fallback_delivery_fee").notNull().default(2000),
-  // Rider earns this per km (one-way per leg).
+  // Rider earns this per km (one-way per leg)...
   riderPayoutPerKm: integer("rider_payout_per_km").notNull().default(700),
+  // ...floored at this minimum per leg, so short trips still pay fairly.
+  riderMinPayout: integer("rider_min_payout").notNull().default(2000),
   // Flat platform fee per order + commission on item total (basis points).
   platformFee: integer("platform_fee").notNull().default(1000),
   commissionBps: integer("commission_bps").notNull().default(1000),
