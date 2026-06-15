@@ -4,6 +4,7 @@ import { eq, sql } from "drizzle-orm";
 import { db } from "../../db/client.js";
 import { orders } from "../../db/schema/orders.js";
 import { shops } from "../../db/schema/shops.js";
+import { riders } from "../../db/schema/riders.js";
 import { reviews } from "../../db/schema/reviews.js";
 import type { AuthenticatedRequest } from "../../lib/types.js";
 import {
@@ -17,6 +18,8 @@ import { parseUUID } from "../../lib/validate-uuid.js";
 const reviewSchema = z.object({
   rating: z.number().int().min(1).max(5),
   comment: z.string().trim().max(500).optional(),
+  // Optional rider rating (1–5) for the same order.
+  riderRating: z.number().int().min(1).max(5).optional(),
 });
 
 // ─────────────────────────────────────────────────────────
@@ -60,6 +63,10 @@ export async function submitReview(
 
     const created = await db.transaction(async (tx) => {
       // Insert (orderId is unique → second attempt throws)
+      // Only attach a rider rating if this order actually had a rider.
+      const riderId = order.riderId ?? null;
+      const riderRating = riderId ? parsed.data.riderRating ?? null : null;
+
       const [row] = await tx
         .insert(reviews)
         .values({
@@ -68,6 +75,8 @@ export async function submitReview(
           customerId: req.user.id,
           rating: parsed.data.rating,
           comment: parsed.data.comment ?? null,
+          riderId,
+          riderRating,
         })
         .returning();
 
@@ -87,6 +96,25 @@ export async function submitReview(
           totalRatings: agg?.count ?? 0,
         })
         .where(eq(shops.id, order.shopId));
+
+      // Recompute the rider aggregate from their rated reviews.
+      if (riderId && riderRating != null) {
+        const [rAgg] = await tx
+          .select({
+            avg: sql<number>`avg(${reviews.riderRating})`,
+            count: sql<number>`count(${reviews.riderRating})::int`,
+          })
+          .from(reviews)
+          .where(eq(reviews.riderId, riderId));
+
+        await tx
+          .update(riders)
+          .set({
+            rating: Math.round((rAgg?.avg ?? 0) * 10) / 10,
+            totalRatings: rAgg?.count ?? 0,
+          })
+          .where(eq(riders.id, riderId));
+      }
 
       return row;
     });

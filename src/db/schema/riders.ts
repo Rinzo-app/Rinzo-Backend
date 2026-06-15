@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, boolean, doublePrecision, timestamp, text, index } from "drizzle-orm/pg-core";
+import { pgTable, uuid, varchar, boolean, doublePrecision, timestamp, text, integer, index } from "drizzle-orm/pg-core";
 import { riderStatusEnum, documentsStatusEnum } from "./enums.js";
 import { users } from "./users.js";
 
@@ -25,6 +25,10 @@ export const riders = pgTable("riders", {
   lastLat: doublePrecision("last_lat"),
   lastLng: doublePrecision("last_lng"),
   locationUpdatedAt: timestamp("location_updated_at"),
+
+  // ── Denormalized customer rating aggregate ──────────────
+  rating: doublePrecision("rating").notNull().default(0),
+  totalRatings: integer("total_ratings").notNull().default(0),
 }, (t) => ({
   // getRiderForUser on every rider request; auto-assign scans by status
   userIdx: index("riders_user_id_idx").on(t.userId),

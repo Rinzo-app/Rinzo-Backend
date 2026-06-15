@@ -54,6 +54,8 @@ export async function getRiderProfile(
         documentsRejectionReason: riders.documentsRejectionReason,
         riderStatus: riders.status,
         isAvailable: riders.isAvailable,
+        rating: riders.rating,
+        totalRatings: riders.totalRatings,
       })
       .from(riders)
       .where(eq(riders.userId, req.user.id))
@@ -111,6 +113,8 @@ export async function getRiderProfile(
       availability: rider.isAvailable ? "AVAILABLE" : "OFFLINE",
       joinedDate: user?.createdAt?.toISOString() ?? new Date().toISOString(),
       totalDeliveries: total,
+      rating: rider.rating ?? 0,
+      totalRatings: rider.totalRatings ?? 0,
     });
   } catch (err) {
     next(err);
