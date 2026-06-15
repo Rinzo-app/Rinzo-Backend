@@ -26,6 +26,7 @@ import { tryAutoAssignPickup, tryAutoAssignDelivery } from "../../lib/auto-assig
 import { notifyUserAsync } from "../../lib/push.js";
 import { getPaymentProvider } from "../../lib/payments/index.js";
 import { bookCodCollection } from "../../lib/cod-collection.js";
+import { getActiveMembership, applyBenefit } from "../../lib/membership.js";
 
 // ── Active statuses that count toward daily capacity ────
 const ACTIVE_STATUSES: OrderStatus[] = [
@@ -161,6 +162,15 @@ export async function createOrder(
     const deliveryFee = computeDeliveryFee(distanceM);
     const platformFee = getPricing().platformFee;
 
+    // ── 5c. Apply membership benefits (platform-funded) ──
+    // deliveryFee stays on the order (rider is still paid); the customer
+    // simply isn't charged it when waived. Item discount is recorded and
+    // subtracted from what the customer pays; the shop still gets full price.
+    const benefit = await getActiveMembership(customerId);
+    const applied = applyBenefit(benefit, totalAmount, deliveryFee);
+    const membershipDiscount = applied.discount;
+    const membershipFreeDelivery = applied.freeDelivery;
+
     // ── 6. Insert order + order_items in a transaction ───
     let result;
     try {
@@ -206,6 +216,8 @@ export async function createOrder(
             platformFee,
             deliveryFee,
             tipAmount,
+            membershipDiscount,
+            membershipFreeDelivery,
             status: "PLACED",
             pickupAddress: body.pickupAddress,
             deliveryAddress: body.deliveryAddress,
@@ -244,7 +256,14 @@ export async function createOrder(
           .insert(payments)
           .values({
             orderId: order.id,
-            amount: order.totalAmount + order.platformFee + order.deliveryFee + order.tipAmount,
+            // What the customer actually pays: items − member discount +
+            // platform fee + tip + delivery (waived for free-delivery members).
+            amount:
+              order.totalAmount -
+              order.membershipDiscount +
+              order.platformFee +
+              order.tipAmount +
+              (order.membershipFreeDelivery ? 0 : order.deliveryFee),
             method: "COD",
             status: "PENDING",
           })
@@ -866,11 +885,18 @@ export async function quoteOrder(
     const deliveryFee = computeDeliveryFee(distanceM);
     const platformFee = getPricing().platformFee;
 
+    // ── Apply membership benefits (if any) ──────────────
+    const benefit = await getActiveMembership(req.user.id);
+    const applied = applyBenefit(benefit, itemsTotal, deliveryFee);
+
     res.status(200).json({
       itemsTotal,
-      deliveryFee,
+      deliveryFee: applied.deliveryCharged,
       platformFee,
-      total: itemsTotal + deliveryFee + platformFee,
+      membershipDiscount: applied.discount,
+      membershipFreeDelivery: applied.freeDelivery,
+      membershipPlan: benefit?.planName ?? null,
+      total: itemsTotal - applied.discount + applied.deliveryCharged + platformFee,
     });
   } catch (err) {
     next(err);

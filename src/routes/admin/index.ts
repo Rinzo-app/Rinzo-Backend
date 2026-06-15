@@ -20,6 +20,21 @@ import { listSettlements, settleRiderCash, listShopPayouts, payShop } from "./ad
 
 const adminRouter = Router();
 
+// ── Membership plans + grants ────────────────────────────
+import {
+  listPlans,
+  createPlan,
+  updatePlan,
+  listMemberships,
+  grantMembership,
+} from "./admin-memberships.handler.js";
+
+adminRouter.get("/plans", requireAuth, requireRole("ADMIN"), authed(listPlans));
+adminRouter.post("/plans", requireAuth, requireRole("ADMIN"), authed(createPlan));
+adminRouter.patch("/plans/:id", requireAuth, requireRole("ADMIN"), authed(updatePlan));
+adminRouter.get("/memberships", requireAuth, requireRole("ADMIN"), authed(listMemberships));
+adminRouter.post("/memberships/grant", requireAuth, requireRole("ADMIN"), authed(grantMembership));
+
 // ── Dashboard metrics ────────────────────────────────────
 import { getDashboard } from "./admin-dashboard.handler.js";
 

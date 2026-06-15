@@ -11,6 +11,7 @@ import { disputesRouter } from "./disputes/index.js";
 import { addressesRouter } from "./addresses/index.js";
 import { favoritesRouter } from "./favorites/index.js";
 import { notificationsRouter } from "./notifications/index.js";
+import { membershipsRouter } from "./memberships/index.js";
 
 const apiRouter = Router();
 
@@ -35,5 +36,6 @@ apiRouter.use("/disputes", disputesRouter);
 apiRouter.use("/addresses", addressesRouter);
 apiRouter.use("/favorites", favoritesRouter);
 apiRouter.use("/notifications", notificationsRouter);
+apiRouter.use("/memberships", membershipsRouter);
 
 export { apiRouter };

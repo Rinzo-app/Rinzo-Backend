@@ -225,6 +225,13 @@
       "when": 1738972800031,
       "tag": "0031_rider_ratings",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1738972800032,
+      "tag": "0032_memberships",
+      "breakpoints": true
     }
   ]
 }

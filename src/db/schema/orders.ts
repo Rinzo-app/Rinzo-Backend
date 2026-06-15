@@ -1,4 +1,4 @@
-import { pgTable, uuid, jsonb, integer, text, varchar, doublePrecision, timestamp, index } from "drizzle-orm/pg-core";
+import { pgTable, uuid, jsonb, integer, text, varchar, doublePrecision, timestamp, boolean, index } from "drizzle-orm/pg-core";
 import { orderStatusEnum, rejectionReasonEnum } from "./enums.js";
 import { users } from "./users.js";
 import { shops } from "./shops.js";
@@ -21,6 +21,10 @@ export const orders = pgTable("orders", {
   // Optional rider tip (paise), added to the order total; paid 100% to
   // the rider on delivery.
   tipAmount: integer("tip_amount").notNull().default(0),
+  // Membership perks applied at checkout (platform-funded): discount on
+  // items (paise) and whether delivery was waived for a member.
+  membershipDiscount: integer("membership_discount").notNull().default(0),
+  membershipFreeDelivery: boolean("membership_free_delivery").notNull().default(false),
   status: orderStatusEnum("status").notNull().default("PLACED"),
   pickupAddress: text("pickup_address").notNull(),
   deliveryAddress: text("delivery_address").notNull(),
